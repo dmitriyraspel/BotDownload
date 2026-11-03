@@ -74,3 +74,39 @@ def test_free_space_rejects_invalid_limits(tmp_path, expected, reserve):
     from bot.download_storage import require_free_space
     with pytest.raises(DownloadStorageError):
         require_free_space(tmp_path, expected, reserve_bytes=reserve)
+
+
+@pytest.mark.parametrize("name", [
+    "task-42", "task-42-backup", "task-42-" + "g" * 32,
+    "task-42-" + "a" * 31, "task-42-" + "a" * 33,
+])
+def test_cleanup_refuses_non_generated_directories(tmp_path, name):
+    root = tmp_path / "downloads"
+    root.mkdir()
+    directory = root / name
+    directory.mkdir(mode=0o700)
+    marker = directory / "keep.txt"
+    marker.write_text("keep")
+    with pytest.raises(DownloadStorageError):
+        cleanup_task_directory(root, directory)
+    assert marker.read_text() == "keep"
+
+
+def test_cleanup_refuses_publicly_accessible_task_directory(tmp_path):
+    root = tmp_path / "downloads"
+    root.mkdir()
+    directory = create_task_directory(root, "42")
+    marker = directory / "keep.txt"
+    marker.write_text("keep")
+    directory.chmod(0o755)
+    with pytest.raises(DownloadStorageError):
+        cleanup_task_directory(root, directory)
+    assert marker.read_text() == "keep"
+
+
+def test_cleanup_accepts_generated_alphanumeric_task_id(tmp_path):
+    root = tmp_path / "downloads"
+    root.mkdir()
+    directory = create_task_directory(root, "abc_42")
+    cleanup_task_directory(root, directory)
+    assert not directory.exists()
