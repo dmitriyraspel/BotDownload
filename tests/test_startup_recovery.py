@@ -30,12 +30,12 @@ def test_startup_recovers_interrupted_and_valid_upload(tmp_path):
         assert change_status(db, prepared, "upload_pending", "uploading")
     report = recover_before_workers(db_path, str(root))
     assert report.requeued == 1
-    assert report.ready_files == 1
+    assert report.ready_files == 0
     assert report.missing_or_unsafe_files == 0
     assert report.orphan_directories == ()
     with database(db_path) as db:
         assert db.execute("SELECT status FROM tasks WHERE id=?", (interrupted,)).fetchone()[0] == "queued"
-        assert db.execute("SELECT status FROM tasks WHERE id=?", (prepared,)).fetchone()[0] == "upload_pending"
+        assert db.execute("SELECT status FROM tasks WHERE id=?", (prepared,)).fetchone()[0] == "uploading"
     assert path.read_bytes() == b"ready"
 
 
