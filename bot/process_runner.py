@@ -4,6 +4,7 @@ Does not launch downloads by itself. Caller supplies a trusted argv sequence.
 """
 import asyncio
 import os
+import math
 import signal
 from collections.abc import Sequence
 from pathlib import Path
@@ -35,20 +36,23 @@ async def run_bounded_process(
 
     Caller must enforce resource/network isolation and output limits separately.
     """
-    if not argv or any(not isinstance(x, str) or not x or "\x00" in x for x in argv):
+    if not argv or any(type(x) is not str or not x or "\x00" in x for x in argv):
         raise ProcessExecutionError("Недопустимая команда")
-    if not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool) or not (0 < timeout_seconds < float("inf")):
+    if not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ProcessExecutionError("Недопустимый тайм-аут")
-    if not cwd.is_dir():
+    if not isinstance(cwd, Path) or not cwd.is_dir():
         raise ProcessExecutionError("Рабочий каталог отсутствует")
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(cwd),
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-        start_new_session=(os.name == "posix"),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(cwd),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=(os.name == "posix"),
+        )
+    except OSError as exc:
+        raise ProcessExecutionError("Не удалось запустить внешний процесс") from exc
     try:
         await asyncio.wait_for(process.wait(), timeout=timeout_seconds)
     except asyncio.TimeoutError as exc:
