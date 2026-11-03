@@ -46,7 +46,7 @@ async def run_upload_queue(
                     third_attempt_delay_seconds=third_attempt_delay_seconds,
                     project_root=project_root,
                     daily_limit=daily_limit, trusted_users=trusted_users,
-                    )
+                )
             except asyncio.CancelledError:
                 raise
             except Exception:
