@@ -14,6 +14,8 @@ from .config import ConfigurationError, load_settings
 from .database import initialize
 from .telegram_handlers import router
 from .startup_recovery import recover_before_workers
+from .ready_cleanup import cleanup_terminal_files
+from .upload_queue import run_upload_queue
 
 
 async def run_bot(settings) -> None:
@@ -24,10 +26,29 @@ async def run_bot(settings) -> None:
     bot = Bot(token=settings.token, session=session)
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
+    stop = asyncio.Event()
+    upload = asyncio.create_task(run_upload_queue(
+        stop=stop, bot=bot, db_path=Path("data/bot.sqlite"),
+        configured_download_dir=settings.data["storage"]["download_dir"],
+        max_bytes=settings.data["telegram"]["max_upload_size_mb"][telegram["api_mode"]] * 1024 * 1024,
+        max_attempts=settings.data["telegram_upload_max_attempts"],
+        second_attempt_delay_seconds=settings.data["telegram_upload_second_attempt_delay_seconds"],
+        third_attempt_delay_seconds=settings.data["telegram_upload_third_attempt_delay_seconds"],
+    ))
     try:
         await dispatcher.start_polling(bot)
     finally:
-        await bot.session.close()
+        stop.set()
+        try:
+            await asyncio.wait_for(upload, timeout=10)
+        except asyncio.TimeoutError:
+            upload.cancel()
+            try:
+                await upload
+            except asyncio.CancelledError:
+                pass
+        finally:
+            await bot.session.close()
 
 
 def main() -> None:
@@ -59,6 +80,10 @@ def main() -> None:
         )
         for orphan in recovery.orphan_directories:
             logging.warning("Незарегистрированный каталог (не удалён): %s", orphan)
+        cleaned, skipped = cleanup_terminal_files(
+            db_path, settings.data["storage"]["download_dir"],
+        )
+        logging.info("Очистка завершённых задач: удалено %d, пропущено %d", cleaned, skipped)
         logging.info("Запускается Telegram polling (режим %s)", settings.data["telegram"]["api_mode"])
         asyncio.run(run_bot(settings))
     except (ConfigurationError, OSError, RuntimeError) as exc:
