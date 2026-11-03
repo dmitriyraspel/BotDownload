@@ -4,6 +4,7 @@ Network isolation / SSRF controls are required before enabling this for untruste
 """
 import asyncio
 import math
+import os
 import stat
 from pathlib import Path
 import sys
@@ -42,7 +43,7 @@ def build_command(url: str, mode: str, max_bytes: int, output: Path) -> list[str
         raise DownloadError("Недопустимая ссылка")
     if mode not in ("video", "mp3"):
         raise DownloadError("Неизвестный формат")
-    if max_bytes <= 0:
+    if type(max_bytes) is not int or max_bytes <= 0:
         raise DownloadError("Недопустимый лимит размера")
     command = [
         sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist",
@@ -97,11 +98,13 @@ async def download_to_temporary(url: str, mode: str, duration: object,
         result = entries[0]
         metadata = result.lstat()
         if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
-                or metadata.st_size <= 0):
+                or metadata.st_uid != os.getuid() or metadata.st_size <= 0):
             raise DownloadError("Небезопасный результат скачивания")
         if mode == "mp3" and result.suffix.lower() != ".mp3":
             raise DownloadError("Не удалось преобразовать файл в MP3")
         check_size(metadata.st_size, max_bytes)
+        # Keep returned media private regardless of the extractor's umask.
+        result.chmod(0o600)
         return temporary, result
     except BaseException:
         temporary.cleanup()
