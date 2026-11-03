@@ -44,7 +44,10 @@ async def run_json_subprocess(
     try:
         async def read_result():
             # Read one extra byte to detect oversized output, then stop the group.
-            output = await process.stdout.read(max_output_bytes + 1)
+            try:
+                output = await process.stdout.readexactly(max_output_bytes + 1)
+            except asyncio.IncompleteReadError as exc:
+                output = exc.partial
             if len(output) > max_output_bytes:
                 raise MetadataProcessError("Слишком большой ответ анализатора")
             # EOF may not arrive until all descendants close stdout.
