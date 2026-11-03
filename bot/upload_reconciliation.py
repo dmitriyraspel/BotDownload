@@ -51,6 +51,42 @@ def confirm_delivered(db_path: Path, *, task_id: int,
             db, task_id=task_id, telegram_file_id=telegram_file_id
         )
 
+
+
+def confirm_not_delivered(db_path: Path, *, task_id: int) -> bool:
+    """Operator-verified non-delivery: make a quarantined task retryable.
+
+    This must NEVER be used on a timeout alone. Confirm independently that
+    Telegram did not accept the message. Preserve the staged file, release
+    its reservation and reset its retry schedule in one SQLite transaction.
+    """
+    if type(task_id) is not int or task_id <= 0:
+        return False
+    with database(db_path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            """SELECT r.task_id FROM tasks AS t
+               JOIN delivery_reservations AS r ON r.task_id=t.id
+               WHERE t.id=? AND t.status='uploading'""",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        updated = db.execute(
+            """UPDATE tasks SET status='upload_pending', next_upload_at=NULL,
+                      upload_attempts=0
+               WHERE id=? AND status='uploading'""",
+            (task_id,),
+        )
+        if updated.rowcount != 1:
+            raise RuntimeError("Не удалось вернуть задачу в ожидание отправки")
+        deleted = db.execute(
+            "DELETE FROM delivery_reservations WHERE task_id=?", (task_id,)
+        )
+        if deleted.rowcount != 1:
+            raise RuntimeError("Не удалось освободить резерв отправки")
+        return True
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Read-only report of ambiguous Telegram deliveries")
