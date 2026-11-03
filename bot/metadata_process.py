@@ -75,9 +75,9 @@ async def run_json_subprocess(
         raise
 
 
-async def inspect_in_subprocess(url: str, *, timeout_seconds: float) -> dict:
+async def inspect_in_subprocess(\n    url: str, *, timeout_seconds: float,\n    network_guard: object | None = None,\n) -> dict:
     """Process-managed inspection; NOT safe for untrusted URLs until egress is confined."""
-    from .network_security import validate_public_https_target
+    from .network_security import validate_public_https_target\n    # The preflight below is not a substitute for a kernel-enforced egress\n    # boundary. Refuse to spawn a networked extractor until one is supplied.\n    if network_guard is None:\n        raise MetadataProcessError("Не настроена изоляция сетевых соединений")\n    if not callable(network_guard):\n        raise MetadataProcessError("Некорректная политика сетевой изоляции")
     from .telegram_handlers import ALLOWED_HOSTS, validate_media_url
 
     if not validate_media_url(url):
