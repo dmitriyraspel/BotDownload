@@ -82,20 +82,29 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0 or not os.path.isdir("/run/systemd/system"):
         parser.error("requires root and systemd")
+    # Local isolation tests must run even when external DNS is unavailable or
+    # deliberately returns a sinkhole/private address.
+    passed = True
+    public = []
     try:
         infos = socket.getaddrinfo(args.public_host, 443, type=socket.SOCK_STREAM)
     except OSError as exc:
-        print(f"INCONCLUSIVE: host DNS lookup failed: {exc}")
-        return 2
-    public = []
-    for family, _, _, _, sockaddr in infos:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if ip.is_global and family in (socket.AF_INET, socket.AF_INET6):
-            public.append((family, sockaddr[0]))
-    if not public:
-        print("INCONCLUSIVE: DNS returned no global addresses")
-        return 2
-    passed = True
+        print(f"DNS INCONCLUSIVE for {args.public_host}: {exc}")
+        passed = False
+    else:
+        answers = sorted({sockaddr[0] for family, _, _, _, sockaddr in infos
+                          if family in (socket.AF_INET, socket.AF_INET6)})
+        print(f"DNS {args.public_host}: {', '.join(answers) or '(empty)'}")
+        for family, _, _, _, sockaddr in infos:
+            if family not in (socket.AF_INET, socket.AF_INET6):
+                continue
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_global:
+                public.append((family, sockaddr[0]))
+        if not public:
+            print("PUBLIC HTTPS INCONCLUSIVE: DNS returned no global addresses; "
+                  "check system resolver, DNS filtering or host overrides")
+            passed = False
     for family, addr in ((socket.AF_INET, "127.0.0.1"),
                          (socket.AF_INET6, "::1")):
         try:
