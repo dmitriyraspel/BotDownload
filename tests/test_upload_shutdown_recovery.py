@@ -8,7 +8,7 @@ from bot.storage import (
 from bot.upload_coordinator import upload_one_task
 
 
-def test_cancelled_upload_preserves_file_for_restart_recovery(tmp_path):
+def test_cancelled_upload_quarantines_ambiguous_delivery_after_restart(tmp_path):
     root = tmp_path / "downloads"
     root.mkdir()
     db_path = tmp_path / "db.sqlite"
@@ -56,4 +56,4 @@ def test_cancelled_upload_preserves_file_for_restart_recovery(tmp_path):
     with database(db_path) as db:
         assert db.execute(
             "SELECT status FROM tasks WHERE id=?", (task_id,)
-        ).fetchone()[0] == "upload_pending"
+        ).fetchone()[0] == "uploading"
