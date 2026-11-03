@@ -5,11 +5,10 @@ command, URL or path. It is not wired to the production worker or Telegram.
 """
 import asyncio
 import os
+import math
 from pathlib import Path
 import signal
 import sys
-
-from .process_runner import ProcessExecutionError
 
 
 class OfflineExecutionError(RuntimeError):
@@ -31,7 +30,7 @@ async def execute_offline_job(
             or workspace.stat().st_uid != os.geteuid()
             or workspace.stat().st_mode & 0o077):
         raise OfflineExecutionError("Рабочий каталог должен быть приватным")
-    if (type(timeout_seconds) not in (int, float) or not 0 < timeout_seconds <= 3600
+    if (type(timeout_seconds) not in (int, float) or not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 3600
             or type(max_output_bytes) is not int or not 0 < max_output_bytes <= 1024 * 1024):
         raise OfflineExecutionError("Недопустимые ограничения")
     if cancel is not None and not isinstance(cancel, asyncio.Event):
