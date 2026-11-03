@@ -269,9 +269,9 @@ def recover_interrupted_tasks(connection: sqlite3.Connection) -> int:
     cursor = connection.execute(
         """UPDATE tasks SET status='queued' WHERE status IN ('downloading','processing')"""
     )
-    connection.execute(
-        "UPDATE tasks SET status='upload_pending' WHERE status='uploading'"
-    )
+    # Upload outcome may be ambiguous after a crash. Do not retry
+    # 'uploading' automatically: Telegram may already have delivered it.
+    # An operator/reconciliation path must resolve such tasks explicitly.
     return cursor.rowcount
 
 
@@ -448,4 +448,30 @@ def complete_reserved_delivery(connection: sqlite3.Connection, *,
         return False
     connection.execute("DELETE FROM delivery_reservations WHERE task_id=?",
                        (task_id,))
+    return True
+
+
+
+def claim_upload_task(connection: sqlite3.Connection, *, task_id: int,
+                      utc_day: str, daily_limit: int,
+                      trusted_users: tuple[int, ...] | list[int] = ()) -> bool:
+    """Atomically reserve quota and transition a staged task to uploading.
+
+    Commit the surrounding database context before sending anything to Telegram.
+    A crashed or ambiguous upload stays in 'uploading' for reconciliation.
+    """
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
+    row = connection.execute(
+        "SELECT ready_file FROM tasks WHERE id=? AND status='upload_pending'",
+        (task_id,)
+    ).fetchone()
+    if row is None or not row[0]:
+        return False
+    if not reserve_delivery_slot(connection, task_id=task_id, utc_day=utc_day,
+                                 daily_limit=daily_limit,
+                                 trusted_users=trusted_users):
+        return False
+    if not change_status(connection, task_id, "upload_pending", "uploading"):
+        raise RuntimeError("Не удалось зарезервировать отправку")
     return True
