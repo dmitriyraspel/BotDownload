@@ -266,3 +266,28 @@ def recover_interrupted_tasks(connection: sqlite3.Connection) -> int:
         "UPDATE tasks SET status='upload_pending' WHERE status='uploading'"
     )
     return cursor.rowcount
+
+
+def cancel_task(connection: sqlite3.Connection, *, task_id: int, user_id: int) -> bool:
+    """Cancel one task owned by the requester, never another user's task.
+
+    This changes durable state only. A future worker must also terminate the
+    corresponding process and clean up its workspace.
+    """
+    if task_id <= 0 or user_id <= 0:
+        return False
+    cursor = connection.execute(
+        """UPDATE tasks SET status='cancelled'
+        WHERE id=? AND user_id=?
+        AND status IN ('queued','downloading','processing','upload_pending','uploading')""",
+        (task_id, user_id),
+    )
+    return cursor.rowcount == 1
+
+
+def task_is_cancelled(connection: sqlite3.Connection, task_id: int) -> bool:
+    """Allow the worker to poll for cancellation between processing steps."""
+    row = connection.execute(
+        "SELECT status FROM tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    return row is not None and row[0] == "cancelled"
