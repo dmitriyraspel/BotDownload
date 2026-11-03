@@ -18,6 +18,7 @@ limits:
   queue_wait_timeout_minutes: 30
 storage:
   unknown_size_fallback_mib: 2048
+  download_dir: "data/downloads"
 rate_limit:
   link_attempts: 5
   window_seconds: 600
