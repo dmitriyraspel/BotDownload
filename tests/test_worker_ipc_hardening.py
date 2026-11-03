@@ -47,3 +47,35 @@ def test_serve_rejects_world_writable_runtime_directory(tmp_path):
         assert not (directory / "worker.sock").exists()
     finally:
         directory.chmod(0o700)
+
+
+@pytest.mark.parametrize("payload", [
+    b'{"op":"ping","version":1}',
+    b'{"op":"download","version":1}\\n',
+    b'{"op":"ping","version":1,"version":1}\\n',
+    b"x" * 5000 + b"\\n",
+])
+def test_worker_connection_rejects_bad_framing_and_commands(tmp_path, payload):
+    from bot.worker_ipc import handle_connection
+
+    async def run():
+        path = tmp_path / "worker.sock"
+        server = await asyncio.start_unix_server(
+            lambda reader, writer: handle_connection(
+                reader, writer, allowed_uid=os.getuid(),
+            ),
+            path=str(path), limit=4098,
+        )
+        try:
+            reader, writer = await asyncio.open_unix_connection(str(path))
+            writer.write(payload)
+            await writer.drain()
+            result = await asyncio.wait_for(reader.readline(), timeout=5)
+            assert b'"status":"rejected"' in result
+            writer.close()
+            await writer.wait_closed()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    asyncio.run(run())
