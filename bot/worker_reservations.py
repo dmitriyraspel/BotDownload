@@ -61,6 +61,13 @@ class JobReservations:
         self._active = None
         return True
 
+    def owns(self, task_id: int, token: str) -> bool:
+        return (valid_token(token) and self._active is not None
+                and self._active[0] == task_id
+                and hmac.compare_digest(
+                    self._active[1], hashlib.sha256(token.encode()).hexdigest()
+                ))
+
     def clear(self) -> None:
         """Revoke all local reservations after an interrupted IPC session."""
         self._active = None
