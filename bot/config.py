@@ -20,7 +20,7 @@ class Settings:
 SCHEMA = {
     "telegram": {"api_mode": str, "api_base_urls": {"cloud": str, "local": str}, "max_upload_size_mb": {"cloud": int, "local": int}, "reconnect": {"initial_delay_seconds": int, "max_delay_seconds": int, "backoff_multiplier": int}},
     "limits": {"max_video_duration_seconds": int, "max_audio_duration_seconds": int, "daily_download_limit": int, "max_pending_tasks": int, "queue_wait_timeout_minutes": int},
-    "storage": {"unknown_size_fallback_mib": int},
+    "storage": {"unknown_size_fallback_mib": int, "download_dir": str},
     "rate_limit": {"link_attempts": int, "window_seconds": int, "ban_duration_seconds": int},
     "max_download_attempts": int,
     "telegram_upload_max_attempts": int,
@@ -57,7 +57,11 @@ def load_settings(root: Path = Path(".")) -> Settings:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise ConfigurationError("config.yaml: не удалось прочитать конфигурацию") from exc
+    data.setdefault("storage", {}).setdefault("download_dir", "data/downloads") if isinstance(data, dict) and isinstance(data.get("storage"), dict) else None
     _validate(data, SCHEMA)
+    download_dir = data["storage"]["download_dir"]
+    if (not download_dir.strip() or "\\x00" in download_dir or "\\n" in download_dir or "\\r" in download_dir):
+        raise ConfigurationError("storage.download_dir: недопустимый путь")
     if data["telegram"]["api_mode"] not in ("local", "cloud"):
         raise ConfigurationError("telegram.api_mode: допустимы local или cloud")
     if data["logging"]["level"] not in ("DEBUG", "INFO", "WARNING", "ERROR"):
