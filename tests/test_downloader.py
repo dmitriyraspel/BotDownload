@@ -30,3 +30,21 @@ def test_invalid_inputs_rejected():
     for url, mode in [("https://example.com/", "mp3"), ("https://youtu.be/abc", "zip")]:
         with pytest.raises(DownloadError):
             build_command(url, mode, 10_000, Path("tmp"))
+
+
+@pytest.mark.parametrize("duration", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_duration_rejected(duration):
+    with pytest.raises(DownloadError):
+        check_duration(duration, 120)
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 1.5])
+def test_invalid_duration_limit_rejected(limit):
+    with pytest.raises(DownloadError):
+        check_duration(60, limit)
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 1.5])
+def test_invalid_size_limit_rejected(limit):
+    with pytest.raises(DownloadError):
+        check_size(100, limit)
