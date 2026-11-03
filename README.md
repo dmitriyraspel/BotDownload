@@ -25,3 +25,23 @@ Debian 13, Python 3.13, FFmpeg и ffprobe, yt-dlp. Для первого эта�
 ## Статус
 
 Telegram polling, очереди, кэш, резервное копирование, административные команды, безопасный анализ URL и скачивание будут реализованы в последующих этапах. Не использовать этот каркас для публичного запуска.
+
+## Stage 2: project-local Deno (Windows and Debian)
+
+Deno is optional for metadata inspection but recommended for YouTube format extraction. Install the pinned version using the project's Python interpreter; the installer downloads an official Deno release into the ignored `tools/deno/` directory and does not modify the global PATH.
+
+Windows (VS Code terminal):
+```powershell
+.\.venv\Scripts\python.exe scripts\install_deno.py
+.\tools\deno\deno.exe --version
+```
+
+Debian 13:
+```sh
+.venv/bin/python scripts/install_deno.py
+./tools/deno/deno --version
+```
+
+The bot automatically configures yt-dlp to use the local Deno binary when present. Supported installer targets: Windows x86_64, Linux x86_64/aarch64. Downloads require HTTPS access to GitHub releases. The installer currently trusts the official HTTPS release; checksum/signature verification is not yet implemented. Do not run downloaded binaries from untrusted sources.
+
+On Windows, `config.yaml` can use `telegram.api_mode: cloud`. Keep the bot token and optional `ADMIN_TELEGRAM_ID` in local `.env`, never commit secrets.
