@@ -42,3 +42,29 @@ def test_egress_guard_rejects_invalid_command(monkeypatch):
     monkeypatch.setattr(Path, "is_dir", lambda self: True)
     with pytest.raises(network_egress.EgressConfigurationError):
         network_egress.systemd_metadata_guard(["python", "bad\x00argument"])
+
+
+@pytest.mark.parametrize("user", [
+    None, True, 1, "", "1bot", "-bot", "bad user",
+    "bad;user", "юзер", "a" * 33,
+])
+def test_egress_guard_rejects_invalid_service_accounts(monkeypatch, user):
+    monkeypatch.setattr(network_egress.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    with pytest.raises(network_egress.EgressConfigurationError, match="пользователя"):
+        network_egress.systemd_metadata_guard(["python"], user=user)
+
+
+@pytest.mark.parametrize("command", [None, "", "python", [], [True], [42], [""]])
+def test_egress_guard_rejects_invalid_command_shapes(monkeypatch, command):
+    monkeypatch.setattr(network_egress.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    with pytest.raises(network_egress.EgressConfigurationError, match="команда"):
+        network_egress.systemd_metadata_guard(command)
+
+
+def test_egress_guard_accepts_portable_service_account(monkeypatch):
+    monkeypatch.setattr(network_egress.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    cmd = network_egress.systemd_metadata_guard(["python"], user="media_worker-1")
+    assert "--property=User=media_worker-1" in cmd
