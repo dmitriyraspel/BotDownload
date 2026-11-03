@@ -1,27 +1,25 @@
-"""Single-step queue runner. Downloads remain intentionally disabled.
+"""Read-only queue inspection while real downloads are disabled.
 
-This module does not execute yt-dlp, FFmpeg, or make network requests.
+This module does not claim tasks, change statuses, or execute external code.
 """
 from pathlib import Path
 
-from .storage import (
-    change_status,
-    claim_next_task,
-    database,
-    task_is_cancelled,
-)
+from .storage import database
 
 
-def process_next_disabled(db_path: Path, *, max_wait_minutes: int = 30) -> int | None:
-    """Claim one task and fail it safely while downloads are disabled.
-
-    This is an explicit maintenance/testing entrypoint, NOT a background
-    consumer: calling it will mark a queued task as failed.
-    """
+def inspect_next_queued(db_path: Path) -> int | None:
+    """Return oldest queued task ID without changing the queue."""
     with database(db_path) as db:
-        task_id = claim_next_task(db, max_wait_minutes=max_wait_minutes)
-        if task_id is None:
-            return None
-        if not task_is_cancelled(db, task_id):
-            change_status(db, task_id, "downloading", "failed")
-        return task_id
+        row = db.execute(
+            "SELECT id FROM tasks WHERE status='queued' ORDER BY created_at,id LIMIT 1"
+        ).fetchone()
+        return row[0] if row else None
+
+
+def queued_task_cancelled(db_path: Path, task_id: int) -> bool:
+    """Check whether a task has been cancelled, without changing state."""
+    with database(db_path) as db:
+        row = db.execute(
+            "SELECT status FROM tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        return row is not None and row[0] == "cancelled"
