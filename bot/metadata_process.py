@@ -94,7 +94,10 @@ async def inspect_in_subprocess(
     # Defense in depth only: DNS results are not pinned to yt-dlp sockets.
     await asyncio.to_thread(validate_public_https_target, url, allowed_hosts=ALLOWED_HOSTS)
     project_root = Path(__file__).resolve().parent.parent
+    command = network_guard([sys.executable, "-m", "bot.metadata_worker", url])
+    if not isinstance(command, (list, tuple)) or not command:
+        raise MetadataProcessError("Политика изоляции не вернула команду")
     return await run_json_subprocess(
-        [sys.executable, "-m", "bot.metadata_worker", url],
+        command,
         cwd=project_root, timeout_seconds=timeout_seconds,
     )
