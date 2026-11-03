@@ -9,6 +9,16 @@ from typing import Iterator
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS previews (
+    chat_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL CHECK(user_id > 0),
+    source_url TEXT NOT NULL,
+    media_key TEXT NOT NULL,
+    available_variants TEXT NOT NULL,
+    cancelled INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(chat_id,message_id)
+);
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL CHECK(user_id > 0),
@@ -143,3 +153,40 @@ def record_delivery(connection: sqlite3.Connection, task_id: int,
             (utc_day,task_id),
         )
     return True
+
+
+def save_preview(connection: sqlite3.Connection, *, chat_id: int, message_id: int,
+                 user_id: int, source_url: str, media_key: str,
+                 variants: list[str]) -> None:
+    import json
+    if user_id <= 0 or not variants:
+        raise ValueError("Некорректное превью")
+    connection.execute(
+        """INSERT INTO previews
+        (chat_id,message_id,user_id,source_url,media_key,available_variants)
+        VALUES (?,?,?,?,?,?)""",
+        (chat_id,message_id,user_id,source_url,media_key,json.dumps(variants)),
+    )
+
+
+def select_preview(connection: sqlite3.Connection, *, chat_id: int,
+                   message_id: int, user_id: int, variant: str) -> tuple[str,str] | None:
+    import json
+    row = connection.execute(
+        """SELECT source_url,media_key,available_variants FROM previews
+        WHERE chat_id=? AND message_id=? AND user_id=? AND cancelled=0""",
+        (chat_id,message_id,user_id),
+    ).fetchone()
+    if row is None or variant not in json.loads(row[2]):
+        return None
+    return row[0], row[1]
+
+
+def cancel_preview_record(connection: sqlite3.Connection, *, chat_id: int,
+                          message_id: int, user_id: int) -> bool:
+    cursor = connection.execute(
+        """UPDATE previews SET cancelled=1 WHERE chat_id=? AND message_id=?
+        AND user_id=? AND cancelled=0""",
+        (chat_id,message_id,user_id),
+    )
+    return cursor.rowcount == 1
