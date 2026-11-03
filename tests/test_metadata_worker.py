@@ -42,6 +42,7 @@ def test_inspection_preflight_blocks_process(monkeypatch):
     monkeypatch.setattr(metadata_process, "run_json_subprocess", fake_runner)
     with pytest.raises(ValueError, match="blocked"):
         asyncio.run(metadata_process.inspect_in_subprocess(
-            "https://youtu.be/abc", timeout_seconds=3,\n            network_guard=lambda command: command,
+            "https://youtu.be/abc", timeout_seconds=3,
+            network_guard=lambda command: command,
         ))
     assert calls == []
