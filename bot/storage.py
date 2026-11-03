@@ -196,7 +196,8 @@ def enqueue_task(connection: sqlite3.Connection, *, max_pending: int, **kwargs) 
     """Queue a task if capacity permits; duplicate callback never uses a slot."""
     if max_pending <= 0:
         raise ValueError("max_pending должен быть положительным")
-    connection.execute("BEGIN IMMEDIATE")
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
     existing = connection.execute(
         "SELECT id,user_id FROM tasks WHERE callback_key=?", (kwargs["callback_key"],)
     ).fetchone()
@@ -216,7 +217,8 @@ def claim_next_task(connection: sqlite3.Connection, *, max_wait_minutes: int) ->
     """Claim oldest eligible queued task; expire tasks that waited too long."""
     if max_wait_minutes <= 0:
         raise ValueError("max_wait_minutes должен быть положительным")
-    connection.execute("BEGIN IMMEDIATE")
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
     connection.execute(
         """UPDATE tasks SET status='failed' WHERE status='queued'
         AND created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?)""",
