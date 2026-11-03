@@ -89,7 +89,7 @@ async def serve(socket_path: Path, *, allowed_uid: int) -> None:
         path=str(socket_path), limit=MAX_MESSAGE + 2,
     )
     try:
-        os.chmod(socket_path, 0o600)
+        os.chmod(socket_path, 0o660)
         async with server:
             await server.serve_forever()
     finally:
