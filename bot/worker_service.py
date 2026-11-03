@@ -1,4 +1,4 @@
-"""Dedicated ping-only worker process; never run as root."""
+"""Offline IPC worker for manual V1 execution under the bot account."""
 import asyncio
 import os
 import pwd
@@ -19,7 +19,7 @@ def main() -> None:
     except KeyError:
         raise SystemExit("Пользователь клиента не найден") from None
     socket_path = Path(os.environ.get(
-        "BOTDOWNLOAD_WORKER_SOCKET", "/run/botdownload-worker/worker.sock",
+        "BOTDOWNLOAD_WORKER_SOCKET", "/tmp/botdownload-worker/worker.sock",
     ))
     db_value = os.environ.get("BOTDOWNLOAD_WORKER_DB", "")
     db_path = Path(db_value) if db_value else None
