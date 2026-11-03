@@ -20,7 +20,15 @@ def _task(path):
 
 def test_coordinator_forwards_quota_settings(tmp_path):
     path = tmp_path / "db.sqlite"
+    from bot.download_storage import create_task_directory
+    root = tmp_path / "downloads"
+    root.mkdir()
     task = _task(path)
+    folder = create_task_directory(root, str(task))
+    staged = folder / "audio.mp3"
+    staged.write_bytes(b"audio")
+    with database(path) as db:
+        db.execute("UPDATE tasks SET ready_file=? WHERE id=?", (str(staged), task))
     received = {}
 
     async def fake_delivery(**kwargs):
@@ -30,7 +38,7 @@ def test_coordinator_forwards_quota_settings(tmp_path):
     with patch("bot.upload_coordinator.deliver_pending_file", side_effect=fake_delivery):
         assert asyncio.run(upload_one_task(
             bot=object(), db_path=path, task_id=task,
-            configured_download_dir="downloads", max_bytes=123,
+            configured_download_dir=str(root), max_bytes=123,
             max_attempts=3, second_attempt_delay_seconds=1,
             third_attempt_delay_seconds=2, daily_limit=7,
             trusted_users=(8, 9)))
