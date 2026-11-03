@@ -77,3 +77,19 @@ def test_recovery_rejects_symlink(tmp_path):
     publish(db_path, task_id, link)
     assert inspect_pending_files(db_path, str(root)) == (0, 1)
     assert target.read_bytes() == b"keep"
+
+
+def test_recovery_rejects_publicly_accessible_staging_directory(tmp_path):
+    root = tmp_path / "downloads"
+    root.mkdir()
+    db_path = tmp_path / "db.sqlite"
+    task_id = pending(db_path, "unsafe-permissions")
+    folder = create_task_directory(root, str(task_id))
+    path = folder / "video.mp4"
+    path.write_bytes(b"video")
+    publish(db_path, task_id, path)
+    folder.chmod(0o755)
+    assert not valid_ready_file(root.resolve(), task_id, str(path))
+    assert inspect_pending_files(db_path, str(root)) == (0, 1)
+    assert status(db_path, task_id) == "failed"
+    assert path.read_bytes() == b"video"
