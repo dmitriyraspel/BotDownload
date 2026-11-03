@@ -73,3 +73,40 @@ def test_download_cancellation_propagates_and_cleans(monkeypatch):
             network_guard=fake_egress_guard,
         ))
     assert not directories[0].exists()
+
+
+@pytest.mark.parametrize("artifact", ["symlink", "hardlink", "directory", "empty", "extra"])
+def test_download_rejects_untrusted_worker_artifacts(monkeypatch, tmp_path, artifact):
+    outside = tmp_path / "outside.mp3"
+    outside.write_bytes(b"private-data")
+    workspaces = []
+
+    async def fake_runner(argv, *, cwd, timeout_seconds):
+        workspaces.append(cwd)
+        target = cwd / "result.mp3"
+        if artifact == "symlink":
+            target.symlink_to(outside)
+        elif artifact == "hardlink":
+            import os
+            os.link(outside, target)
+        elif artifact == "directory":
+            target.mkdir()
+        elif artifact == "empty":
+            target.touch()
+        else:
+            target.write_bytes(b"audio")
+            (cwd / "extra.txt").write_bytes(b"unwanted")
+
+    monkeypatch.setattr(downloader, "run_bounded_process", fake_runner)
+    monkeypatch.setattr(
+        downloader, "build_command", lambda url, mode, max_bytes, output: ["fake"]
+    )
+    with pytest.raises(downloader.DownloadError):
+        asyncio.run(downloader.download_to_temporary(
+            "https://example.org/video", "mp3", duration=20,
+            max_duration_seconds=60, max_bytes=100,
+            timeout_seconds=5, network_guard=fake_egress_guard,
+        ))
+    assert len(workspaces) == 1
+    assert not workspaces[0].exists()
+    assert outside.read_bytes() == b"private-data"
