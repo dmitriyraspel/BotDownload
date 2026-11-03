@@ -1,11 +1,12 @@
 """Bounded JSON subprocess transport for future metadata isolation.
 
-Not yet wired to Telegram. Unlike asyncio.to_thread, this transport can
+Telegram inspection is fail-closed until an enforced guard is installed. Unlike asyncio.to_thread, this transport can
 terminate the subprocess group when the deadline expires or on cancellation.
 Network confinement must be added before handling untrusted URLs with it.
 """
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -34,14 +35,20 @@ async def run_json_subprocess(
     max_output_bytes: int = 262144,
 ) -> dict:
     if (not argv or any(type(x) is not str or not x or "\x00" in x for x in argv)
-            or not cwd.is_dir() or not 0 < timeout_seconds < float("inf")
+            or not isinstance(cwd, Path) or not cwd.is_dir()
+            or isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds) or timeout_seconds <= 0
             or type(max_output_bytes) is not int or not 0 < max_output_bytes <= 1048576):
         raise MetadataProcessError("Недопустимые параметры процесса")
-    process = await asyncio.create_subprocess_exec(
-        *argv, cwd=str(cwd), stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        start_new_session=(os.name == "posix"),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv, cwd=str(cwd), stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=(os.name == "posix"),
+        )
+    except OSError as exc:
+        raise MetadataProcessError("Не удалось запустить анализатор") from exc
     try:
         async def read_result():
             # Read one extra byte to detect oversized output, then stop the group.
