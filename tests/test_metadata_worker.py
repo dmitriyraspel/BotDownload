@@ -13,7 +13,6 @@ def test_worker_rejects_invalid_url(capsys):
 
 
 def test_worker_serializes_extracted_data(monkeypatch, capsys):
-    monkeypatch.setattr(metadata_worker, "validate_public_https_target", lambda url, *, allowed_hosts: ("8.8.8.8",))
     monkeypatch.setattr(metadata_worker, "_extract", lambda url: {"title": "Привет"})
     assert metadata_worker.main(["https://youtu.be/abc"]) == 0
     assert json.loads(capsys.readouterr().out) == {"title": "Привет"}
@@ -22,13 +21,12 @@ def test_worker_serializes_extracted_data(monkeypatch, capsys):
 def test_worker_hides_extractor_errors(monkeypatch, capsys):
     def fail(url):
         raise RuntimeError("secret URL token")
-    monkeypatch.setattr(metadata_worker, "validate_public_https_target", lambda url, *, allowed_hosts: ("8.8.8.8",))
     monkeypatch.setattr(metadata_worker, "_extract", fail)
     assert metadata_worker.main(["https://youtu.be/abc"]) == 1
     assert capsys.readouterr().out == ""
 
 
-def test_inspection_preflight_blocks_process(monkeypatch):
+def test_inspection_rejects_unguarded_process(monkeypatch):
     calls = []
 
     def unsafe(url, *, allowed_hosts):
@@ -42,7 +40,7 @@ def test_inspection_preflight_blocks_process(monkeypatch):
         return {}
 
     monkeypatch.setattr(metadata_process, "run_json_subprocess", fake_runner)
-    with pytest.raises(ValueError, match="blocked"):
+    with pytest.raises(metadata_process.MetadataProcessError, match="Не применена изоляция"):
         asyncio.run(metadata_process.inspect_in_subprocess(
             "https://youtu.be/abc", timeout_seconds=3,
             network_guard=lambda command: command,
