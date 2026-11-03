@@ -23,7 +23,7 @@ def reconcile_worker_leases(db: sqlite3.Connection) -> dict[str, int]:
     revoked = db.execute("SELECT changes()").fetchone()[0]
     db.execute(
         """UPDATE tasks SET status='failed'
-        WHERE status='downloading' AND id IN (
+        WHERE status IN ('downloading','processing') AND id IN (
             SELECT task_id FROM worker_job_leases
             WHERE state IN ('expired','cancelled')
         )"""
