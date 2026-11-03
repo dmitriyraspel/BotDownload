@@ -39,14 +39,14 @@ def test_network_allow_is_rejected():
 
 
 @pytest.mark.parametrize("replacement", [
-    "User=tgbot",
+    "User=root",
     "User=root",
     "Group=root",
     "RuntimeDirectoryMode=0777",
     "UMask=0000",
     "Environment=BOTDOWNLOAD_CLIENT_USER=root",
 ])
-def test_worker_must_be_separate_from_bot(replacement):
+def test_worker_rejects_unsafe_service_settings(replacement):
     original = UNIT.read_text(encoding="utf-8")
     key = replacement.split("=", 1)[0]
     old = next(line for line in original.splitlines() if line.startswith(key + "="))
