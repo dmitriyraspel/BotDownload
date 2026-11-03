@@ -30,7 +30,7 @@ def test_relaxed_unit_fails_closed(replacement):
 
 def test_duplicate_setting_is_rejected():
     with pytest.raises(IsolationConfigurationError):
-        verify_offline_unit(UNIT.read_text(encoding="utf-8") + "\nIPAddressDeny=any\n")
+        verify_offline_unit(UNIT.read_text(encoding="utf-8").replace("IPAddressDeny=any", "IPAddressDeny=any\nIPAddressDeny=any"))
 
 
 def test_network_allow_is_rejected():
