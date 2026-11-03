@@ -11,9 +11,9 @@ import threading
 from .network_egress import systemd_metadata_guard
 
 
-def _connect(port: int) -> int:
+def _connect(port: int, *, ipv6: bool = False) -> int:
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=2):
+        with socket.create_connection(("::1" if ipv6 else "127.0.0.1", port), timeout=2):
             print("CONNECTED", flush=True)
             return 0
     except OSError as exc:
@@ -25,11 +25,18 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--child-port", type=int)
+    parser.add_argument("--ipv6", action="store_true")
     args = parser.parse_args(argv)
     if args.child_port is not None:
-        return _connect(args.child_port)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
-        server.bind(("127.0.0.1", 0))
+        return _connect(args.child_port, ipv6=args.ipv6)
+    family = socket.AF_INET6 if args.ipv6 else socket.AF_INET
+    address = "::1" if args.ipv6 else "127.0.0.1"
+    with socket.socket(family, socket.SOCK_STREAM) as server:
+        try:
+            server.bind((address, 0))
+        except OSError as exc:
+            print(f"INCONCLUSIVE: listener unavailable: {exc}")
+            return 2
         server.listen(4)
         server.settimeout(8)
         port = server.getsockname()[1]
@@ -49,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         thread = threading.Thread(target=accept_connections, daemon=True)
         thread.start()
         child = [sys.executable, "-m", "bot.egress_loopback_probe", "--child-port", str(port)]
+        if args.ipv6:
+            child.append("--ipv6")
         try:
             guarded_command = systemd_metadata_guard(child)
             # Compare identical systemd services, changing only IPAddressDeny.
