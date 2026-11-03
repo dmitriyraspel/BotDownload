@@ -59,7 +59,7 @@ async def handle_connection(
             raise WorkerProtocolError("Недопустимая длина сообщения")
         parse_request(raw[:-1])
         response = {"version": 1, "status": "ready", "downloads_enabled": False}
-    except (WorkerProtocolError, asyncio.TimeoutError, asyncio.LimitOverrunError):
+    except (WorkerProtocolError, asyncio.TimeoutError, asyncio.LimitOverrunError, ValueError):
         response = {"version": 1, "status": "rejected"}
     try:
         writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
