@@ -88,7 +88,6 @@ async def inspect_in_subprocess(
     network_guard: object | None = None,
 ) -> dict:
     """Process-managed inspection; NOT safe for untrusted URLs until egress is confined."""
-    from .network_security import validate_public_https_target
     # The preflight below is not a substitute for a kernel-enforced egress
     # boundary. Refuse to spawn a networked extractor until one is supplied.
     if network_guard is None:
@@ -99,8 +98,8 @@ async def inspect_in_subprocess(
 
     if not validate_media_url(url):
         raise MetadataProcessError("Недопустимая ссылка")
-    # Defense in depth only: DNS results are not pinned to yt-dlp sockets.
-    await asyncio.to_thread(validate_public_https_target, url, allowed_hosts=ALLOWED_HOSTS)
+    # Do not preflight public IPs: the approved v1 policy permits Fake-IP DNS.
+    # URL syntax and exact host allowlist are validated above.
     project_root = Path(__file__).resolve().parent.parent
     command = network_guard([sys.executable, "-m", "bot.metadata_worker", url])
     original_command = [sys.executable, "-m", "bot.metadata_worker", url]
