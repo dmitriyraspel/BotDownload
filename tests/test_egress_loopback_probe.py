@@ -27,6 +27,10 @@ def test_baseline_failure_never_passes(monkeypatch, capsys):
         returncode = 1
         stdout = "BLOCKED_OR_FAILED:TimeoutError\n"
         stderr = ""
+    # This test checks the interpretation of a failed baseline, not the
+    # privileged systemd-run preflight (which has separate tests).
+    monkeypatch.setattr(egress_loopback_probe, "systemd_metadata_guard",
+                        lambda command: command)
     monkeypatch.setattr(egress_loopback_probe.subprocess, "run",
                         lambda *args, **kwargs: Result())
     assert egress_loopback_probe.main([]) == 2
