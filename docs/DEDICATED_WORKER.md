@@ -120,3 +120,27 @@ broker must reconcile durable leases before any future execution.
 
 The systemd example continues to block all IP networking. Do not
 interpret these IPC tests as proof of egress isolation.
+
+
+## Offline executor prototype and crash reconciliation
+
+`bot.offline_executor.execute_offline_job` is an **opt-in offline test
+executor**, not a production media downloader. It runs a fixed Python
+command with no shell, in an existing private workspace, with a deadline,
+process-group termination on cancellation and basic output checks.
+The generated artifact contains only the literal `offline-worker-ok`.
+No URLs, downloader arguments, Telegram credentials, or external network
+access are accepted. It is **not wired into** the IPC worker service.
+
+`bot.worker_recovery.reconcile_worker_leases` provides an explicit,
+transactional broker-side reconciliation operation. It expires stale
+leases, revokes reservations for tasks no longer downloading or
+processing, and fails downloading tasks whose leases were revoked or
+expired. It does not automatically retry downloads or touch ambiguous
+Telegram uploads. The broker must invoke it explicitly; it is not yet
+a background recovery daemon.
+
+These modules are offline building blocks. They do not establish
+filesystem, cgroup or network confinement of arbitrary media processes,
+and they do not yet deliver files to Telegram. The live worker remains
+non-executing and `downloads_enabled=false`.
