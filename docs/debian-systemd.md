@@ -1,72 +1,61 @@
-# Debian 12: запуск Telegram-бота через systemd
+# Debian 12: развёртывание BotDownload (текущий тестовый сервер)
 
-Этот этап запускает **только анализ ссылок и очередь**. Загрузка файлов отключена до завершения защиты сетевых соединений yt-dlp.
+**Текущий режим — ручной запуск от `tgbot`. systemd откладывается до окончания разработки и тестов.** Скачивание в Telegram пока отключено; доступны анализ ссылок и интерфейс очереди.
 
-## 1. Создать отдельного пользователя
+## Существующая установка
 
-Выполнять от root:
+- Репозиторий: `/opt/BotDownload`, ветка `feature/stage-2-telegram`.
+- Системный пользователь: `tgbot` (без домашнего каталога, shell `/usr/sbin/nologin`).
+- Код, `.venv`, `.git`: владелец `root`, доступны `tgbot` на чтение.
+- `.env` и `config.yaml`: `root:tgbot`, права `640`.
+- `data/`, `logs/`: `tgbot:tgbot`, права на каталог `750`.
+- Каталог загрузок: `/var/www/botdownload_files`, `tgbot:tgbot`, права `750`. Должен существовать до запуска задач. Отдельный диск можно смонтировать в этот путь.
+- Конфигурация `storage.download_dir: "/var/www/botdownload_files"`; `storage.unknown_size_fallback_mib: 2048`.
+- SQLite: `data/bot.sqlite`; лог: `logs/bot.log`.
+
+Права на код не следует передавать `tgbot`: иначе процесс сможет изменять собственные исполняемые файлы. Для проверки:
 
 ```bash
-useradd --system --home-dir /opt/BotDownload --shell /usr/sbin/nologin botdownload
+id tgbot
+runuser -u tgbot -- test -r /opt/BotDownload/.env && echo 'ENV OK'
+runuser -u tgbot -- test -w /opt/BotDownload/data && echo 'DATA OK'
+runuser -u tgbot -- test -w /opt/BotDownload/logs && echo 'LOGS OK'
+runuser -u tgbot -- test -w /var/www/botdownload_files && echo 'DOWNLOADS OK'
+runuser -u tgbot -- test -w /opt/BotDownload/bot && echo 'WARNING: code writable' || echo 'CODE PROTECTED'
+```
+
+## Обновление без потери настроек
+
+`config.yaml` изменён локально и отслеживается Git. Перед обновлением остановить бот и сохранить файл:
+
+```bash
 cd /opt/BotDownload
-chown -R botdownload:botdownload data logs
-chown root:botdownload /opt/BotDownload/.env /opt/BotDownload/config.yaml
-chmod 640 /opt/BotDownload/.env /opt/BotDownload/config.yaml
-chmod 750 /opt/BotDownload/data /opt/BotDownload/logs
+cp -p config.yaml /root/botdownload-config-backup.yaml
+git status --short
 ```
 
-Если папок `data` и `logs` нет, предварительно создать их командой `mkdir -p data logs`. Код и виртуальное окружение должны быть доступны для чтения пользователю `botdownload`, но не должны быть доступны ему для записи. Не делайте `chown -R botdownload` для всего репозитория.
-
-## 2. Установить службу
-
-Создать файл `/etc/systemd/system/botdownload.service`:
-
-```ini
-[Unit]
-Description=BotDownload Telegram bot (metadata-only)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=botdownload
-Group=botdownload
-WorkingDirectory=/opt/BotDownload
-ExecStart=/opt/BotDownload/.venv/bin/python -m bot
-Environment=PYTHONUNBUFFERED=1
-Environment=PATH=/opt/BotDownload/.venv/bin:/usr/local/bin:/usr/bin:/bin
-Restart=on-failure
-RestartSec=5
-UMask=0027
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/BotDownload/data /opt/BotDownload/logs
-RestrictSUIDSGID=true
-LockPersonality=true
-CapabilityBoundingSet=
-AmbientCapabilities=
-MemoryMax=512M
-TasksMax=64
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Пока не используйте `PrivateNetwork=true`: боту нужен доступ к Telegram API. Для реального скачивания понадобятся отдельные ограничения сетевых запросов и изоляция рабочих процессов.
-
-## 3. Запуск и диагностика
+Если upstream изменил тот же файл, `git pull --ff-only` может отказать. Не выполнять `git reset --hard` и не удалять `.env` или `data/`. Разрешать конфликты отдельно, сохраняя локальные параметры. После разрешения:
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now botdownload
-systemctl status botdownload --no-pager
-journalctl -u botdownload -n 50 --no-pager
+git status --short
+.venv/bin/python -m pytest -q
 ```
 
-Перед запуском остановить ручной процесс `python -m bot`, если он работает, иначе два экземпляра будут одновременно получать Telegram updates.
+На 2026-11-03 на сервере подтверждено **52 passed**. Новые коммиты требуют повторной проверки.
 
-При ошибке доступа проверить права `.env`, `config.yaml`, `data`, `logs` и родительских каталогов командой `namei -l /opt/BotDownload/.env`.
+## Ручной запуск от tgbot
 
-После изменения кода: `git pull`, затем `systemctl restart botdownload`. Не редактируйте секреты через Git и не отправляйте их в чат.
+```bash
+cd /opt/BotDownload
+runuser -u tgbot -- .venv/bin/python -m bot
+```
+
+Остановить `Ctrl+C`. Не запускать одновременно два экземпляра Telegram polling. Просмотр логов: `tail -n 50 /opt/BotDownload/logs/bot.log`. Запуск из `/opt/BotDownload` важен для относительных путей.
+
+## Файлы загрузок
+
+`bot/download_storage.py` предоставляет отдельные каталоги задач `task-<id>-<random>` с правами `700` и очистку только конкретного каталога. Он **пока не подключён к очереди и загрузчику**. Не удалять вручную чужие файлы в корне `/var/www/botdownload_files`. В случае отсутствия смонтированного каталога задача должна останавливаться, а не записывать файлы на системный диск. Контроль свободного места и политика хранения ещё в разработке.
+
+## Финальный этап: systemd
+
+Службу `systemd`, ограничения процессов и сетевую изоляцию настроить **только после** завершения функциональности и тестов. Не использовать старую конфигурацию с пользователем `botdownload`: фактическая учётная запись — `tgbot`.
