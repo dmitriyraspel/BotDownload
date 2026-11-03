@@ -6,6 +6,8 @@ import yt_dlp
 from .telegram_handlers import validate_media_url
 from .local_tools import yt_dlp_js_options
 from .media_variants import available_variants, selected_language
+from .network_security import UnsafeNetworkTarget, validate_public_https_target
+from .telegram_handlers import ALLOWED_HOSTS
 
 
 class AnalysisError(Exception):
@@ -48,7 +50,10 @@ async def inspect(url: str, timeout: int = 60) -> dict:
     if not validate_media_url(url):
         raise AnalysisError("Недопустимая ссылка")
     try:
+        validate_public_https_target(url, allowed_hosts=ALLOWED_HOSTS)
         return await asyncio.wait_for(asyncio.to_thread(_extract, url), timeout=timeout)
+    except UnsafeNetworkTarget as exc:
+        raise AnalysisError("Небезопасный сетевой адрес") from exc
     except asyncio.TimeoutError as exc:
         raise AnalysisError("Превышено время анализа") from exc
     except yt_dlp.utils.DownloadError as exc:
