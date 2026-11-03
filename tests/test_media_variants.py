@@ -37,3 +37,12 @@ def test_no_estimate_without_duration_or_audio_size():
         {"vcodec": "none", "acodec": "mp4a"},
     ]}
     assert available_variants(info)[0]["size"] is None
+
+
+def test_mp3_estimate_is_approximate():
+    info = {"duration": 120, "formats": [{"vcodec": "none", "acodec": "mp4a", "abr": 128}]}
+    variant = available_variants(info)[0]
+    assert variant["size"] == 1_920_000
+    assert variant["approximate"] is True
+    info["duration"] = None
+    assert available_variants(info)[0]["size"] is None
