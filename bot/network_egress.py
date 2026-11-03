@@ -12,17 +12,9 @@ class EgressConfigurationError(RuntimeError):
     pass
 
 
-# Explicitly deny private, loopback, link-local, shared, benchmark, multicast
-# and reserved ranges. This is a minimum deny policy, not a public-IP allowlist.
-DENIED_CIDRS = (
-    "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
-    "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24",
-    "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15",
-    "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4",
-    "240.0.0.0/4", "::/128", "::1/128", "::ffff:0:0/96",
-    "64:ff9b:1::/48", "100::/64", "2001:db8::/32",
-    "fc00::/7", "fe80::/10", "ff00::/8",
-)
+# Approved v1 policy: deny loopback only. Never block Fake-IP 198.18/15.
+# Applying these rules requires systemd/cgroup BPF support and a live test.
+DENIED_CIDRS = ("127.0.0.0/8", "::1/128")
 
 
 def systemd_metadata_guard(command: list[str], *, user: str = "tgbot") -> list[str]:
