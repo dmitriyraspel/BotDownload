@@ -51,11 +51,11 @@ async def link(message: Message) -> None:
     from .metadata import AnalysisError, inspect
     from .config import load_settings
     settings = load_settings()
-    await message.answer("Анализирую ссылку…")
+    progress = await message.answer("⏳ Анализирую ссылку…")
     try:
         info = await inspect(value, timeout=settings.data["timeouts"]["analysis_timeout_seconds"])
     except AnalysisError as exc:
-        await message.answer(str(exc))
+        await progress.edit_text(f"❌ {exc}")
         return
     from .media_variants import size_label
     duration = info.get("duration")
@@ -106,11 +106,16 @@ async def link(message: Message) -> None:
     if trusted_thumbnail and len(card) <= 1024:
         try:
             sent = await message.answer_photo(photo=thumbnail, caption=card, reply_markup=keyboard)
+            try:
+                await progress.delete()
+            except Exception:
+                pass
         except Exception:
             # Thumbnail failures should not prevent a metadata card.
             pass
     if sent is None:
-        sent = await message.answer(card, reply_markup=keyboard)
+        await progress.edit_text(card, reply_markup=keyboard)
+        sent = progress
     if choices and message.from_user:
         from pathlib import Path
         from .storage import database, save_preview
@@ -147,7 +152,12 @@ async def preview_format(callback: CallbackQuery) -> None:
         await callback.answer("Эта кнопка недоступна или карточка отменена", show_alert=True)
     else:
         note = "Выбор сохранён" if created else "Выбор уже сохранён"
-        await callback.answer(f"{note}: {variant}, задача №{task_id}. Скачивание пока отключено.", show_alert=True)
+        await callback.answer(note)
+        status = f"⏳ Выбрано: {variant}\\nЗадача №{task_id} зарегистрирована.\\nСкачивание пока отключено."
+        if callback.message.photo:
+            await callback.message.edit_caption(caption=status)
+        else:
+            await callback.message.edit_text(status)
 
 
 @router.callback_query(F.data == "preview:cancel")
@@ -164,5 +174,8 @@ async def cancel_preview(callback: CallbackQuery) -> None:
     if not cancelled:
         await callback.answer("Нельзя отменить чужую или уже отменённую карточку", show_alert=True)
         return
-    await callback.message.edit_reply_markup(reply_markup=None)
+    if callback.message.photo:
+        await callback.message.edit_caption(caption="❌ Выбор отменён")
+    else:
+        await callback.message.edit_text("❌ Выбор отменён")
     await callback.answer("Выбор отменён")
