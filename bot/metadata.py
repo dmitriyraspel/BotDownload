@@ -46,15 +46,17 @@ def _extract(url: str) -> dict:
     }
 
 
-async def inspect(url: str, timeout: int = 60) -> dict:
+async def inspect(url: str, timeout: int = 60, *, network_guard=None) -> dict:
     if not validate_media_url(url):
         raise AnalysisError("Недопустимая ссылка")
+    if network_guard is None:
+        raise AnalysisError("Сетевой анализ недоступен: не настроена изоляция")
+    from .metadata_process import MetadataProcessError, inspect_in_subprocess
     try:
-        validate_public_https_target(url, allowed_hosts=ALLOWED_HOSTS)
-        return await asyncio.wait_for(asyncio.to_thread(_extract, url), timeout=timeout)
+        return await inspect_in_subprocess(url, timeout_seconds=timeout, network_guard=network_guard)
     except UnsafeNetworkTarget as exc:
         raise AnalysisError("Небезопасный сетевой адрес") from exc
     except asyncio.TimeoutError as exc:
         raise AnalysisError("Превышено время анализа") from exc
-    except yt_dlp.utils.DownloadError as exc:
-        raise AnalysisError("Не удалось получить информацию по ссылке") from exc
+    except (MetadataProcessError, UnsafeNetworkTarget) as exc:
+        raise AnalysisError("Не удалось безопасно проанализировать ссылку") from exc
