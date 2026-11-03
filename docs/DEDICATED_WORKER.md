@@ -7,33 +7,40 @@ test fixture (`execute_offline`). It does not accept arbitrary commands,
 URLs, shell arguments or media files and cannot download media.
 The Telegram bot does not start this service automatically.
 
-## Optional Debian 12 installation (administrator only)
+## V1: manual Debian 12 run (Python 3.11.9)
 
-The example assumes the repository lives in `/opt/BotDownload`. Adjust the
-systemd unit's `WorkingDirectory` and `ExecStart` for another location;
-never change Python sources or overwrite local `config.yaml`.
+Run the bot and the offline worker as the **same unprivileged** account,
+`tgbot`. No systemd unit or additional worker account is needed for V1.
+The worker socket defaults to `/tmp/botdownload-worker/worker.sock`;
+the worker creates its private directory with mode 0700 on first start.
+An existing directory must be owned by the worker UID and mode 0700.
+Never run the worker as root.
 
-1. Create an unprivileged worker account, **different** from the bot account.
-   For example, as root:
-   `useradd --system --no-create-home --shell /usr/sbin/nologin --gid tgbot botdownload-worker`
-   (the `tgbot` group and bot user must already exist).
-2. Install `deploy/botdownload-worker.service.example` as
-   `/etc/systemd/system/botdownload-worker.service`, after reviewing paths
-   and the actual service user/group.
-3. Run `systemctl daemon-reload` and
-   `systemctl enable --now botdownload-worker.service`.
-4. The socket is `/run/botdownload-worker/worker.sock`, inside a
-   systemd-managed runtime directory. It is group-accessible, but the
-   service checks the connecting process's **kernel-provided UID** against
-   `BOTDOWNLOAD_CLIENT_USER=tgbot`. No client-supplied UID is trusted.
-5. To check IPC from the bot account:
-   `sudo -u tgbot /opt/BotDownload/.venv/bin/python -c 'import asyncio; from pathlib import Path; from bot.worker_ipc import ping; print(asyncio.run(ping(Path("/run/botdownload-worker/worker.sock"))))'`
-   Run from the project directory or with its package import path set.
+From the project directory with dependencies installed, start the worker
+in its own terminal (or an existing `tgbot` shell):
 
-The unit denies **all IP traffic** (`IPAddressDeny=any`,
-`RestrictAddressFamilies=AF_UNIX`). This is deliberate: it does not yet
-host a network-capable extractor. A successful ping establishes only that
-the local IPC channel is working, not that download egress is safe.
+```sh
+export BOTDOWNLOAD_CLIENT_USER=tgbot
+export BOTDOWNLOAD_WORKER_DB="$PWD/data/bot.sqlite"
+python -m bot.worker_service
+```
+
+Use the same socket path for the broker/IPC client. For a connectivity check
+from another `tgbot` terminal:
+
+```sh
+python -c 'import asyncio; from pathlib import Path; from bot.worker_ipc import ping; print(asyncio.run(ping(Path("/tmp/botdownload-worker/worker.sock"))))'
+```
+
+The SQLite path must be absolute. This worker opens it read-only and does not
+write task state; the broker remains responsible for all transitions.
+The offline fixture is opt-in and never downloads media. **A manually launched
+process is not an OS-level network sandbox.** Do not enable yt-dlp or public
+downloads until the network confinement requirements are implemented and
+verified on the Debian test server.
+
+A systemd unit remains an optional later deployment task, not a prerequisite
+for manual V1 development.
 
 ## Before enabling media extraction
 
@@ -226,8 +233,6 @@ are marked failed; unexpired leases remain in their existing state pending
 operator review. This is a *fail-closed* guard against duplicate execution,
 not a way to kill worker subprocesses.
 
-The example systemd unit uses a separate `botdownload-worker` UID and
-`tgbot` group, consistent with the installation steps above. Worker data
-access is not granted automatically. In particular, an offline IPC ping
-may succeed while task status/reservation IPC returns `unavailable` until
-an administrator has arranged a read-only SQLite access path.
+In V1 the bot and worker use the same unprivileged `tgbot` UID.
+Configure the worker's read-only SQLite connection using
+`BOTDOWNLOAD_WORKER_DB` before testing reservation operations.
