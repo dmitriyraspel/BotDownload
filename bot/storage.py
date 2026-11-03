@@ -218,6 +218,9 @@ def enqueue_task(connection: sqlite3.Connection, *, max_pending: int, **kwargs) 
         connection, chat_id=kwargs["chat_id"], message_id=kwargs["message_id"]
     )
     if existing_card:
+        owner = connection.execute("SELECT user_id FROM tasks WHERE id=?", (existing_card[0],)).fetchone()[0]
+        if owner != kwargs["user_id"]:
+            raise ValueError("Задача принадлежит другому пользователю")
         return existing_card[0], False
     pending = connection.execute(
         "SELECT COUNT(*) FROM tasks WHERE status='queued'"
