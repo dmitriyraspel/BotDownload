@@ -20,7 +20,7 @@ _TASK_DIRECTORY = re.compile(r"task-[A-Za-z0-9_-]{1,80}-[0-9a-f]{32}\Z")
 
 def download_root(configured_path: str, project_root: Path = Path(".")) -> Path:
     """Resolve an existing directory; do not silently create a missing mount."""
-    if not configured_path or not configured_path.strip():
+    if not isinstance(configured_path, str) or not configured_path.strip():
         raise DownloadStorageError("Не задан каталог загрузок")
     raw = Path(configured_path).expanduser()
     candidate = raw if raw.is_absolute() else project_root / raw
@@ -34,8 +34,10 @@ def download_root(configured_path: str, project_root: Path = Path(".")) -> Path:
 
 def create_task_directory(root: Path, task_id: str) -> Path:
     """Create an unpredictable, private directory for one task."""
-    if not _TASK_ID.fullmatch(task_id) or task_id in (".", ".."):
+    if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id) or task_id in (".", ".."):
         raise DownloadStorageError("Недопустимый ID задачи")
+    if not isinstance(root, Path):
+        raise DownloadStorageError("Некорректный каталог загрузок")
     root = root.resolve(strict=True)
     if not root.is_dir():
         raise DownloadStorageError("Каталог загрузок отсутствует")
