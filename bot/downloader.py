@@ -3,6 +3,7 @@
 Network isolation / SSRF controls are required before enabling this for untrusted links.
 """
 import asyncio
+import math
 import stat
 from pathlib import Path
 import sys
@@ -19,8 +20,10 @@ class DownloadError(Exception):
 
 
 def check_duration(duration: object, maximum_seconds: int) -> None:
-    if not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0:
+    if not isinstance(duration, (int, float)) or isinstance(duration, bool) or not math.isfinite(duration) or duration <= 0:
         raise DownloadError("Длительность неизвестна: скачивание запрещено")
+    if type(maximum_seconds) is not int or maximum_seconds <= 0:
+        raise DownloadError("Некорректный лимит длительности")
     if duration > maximum_seconds:
         raise DownloadError("Видео превышает ограничение по длительности")
 
@@ -28,6 +31,8 @@ def check_duration(duration: object, maximum_seconds: int) -> None:
 def check_size(size: object, maximum_bytes: int) -> None:
     if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
         raise DownloadError("Размер неизвестен: скачивание запрещено")
+    if type(maximum_bytes) is not int or maximum_bytes <= 0:
+        raise DownloadError("Некорректный лимит размера")
     if size > maximum_bytes:
         raise DownloadError("Файл превышает допустимый размер")
 
