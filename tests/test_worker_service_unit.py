@@ -7,8 +7,8 @@ UNIT = Path(__file__).resolve().parents[1] / "deploy" / "botdownload-worker.serv
 
 def test_offline_worker_unit_runs_as_v1_service_account():
     text = UNIT.read_text(encoding="utf-8")
-    assert "User=botdownload-worker" in text
-    assert "User=tgbot" not in text
+    assert "User=tgbot" in text
+    assert "User=botdownload-worker" not in text
     assert "Environment=BOTDOWNLOAD_CLIENT_USER=tgbot" in text
     assert "Group=tgbot" in text
     assert "NoNewPrivileges=yes" in text
