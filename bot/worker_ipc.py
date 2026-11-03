@@ -14,6 +14,7 @@ import stat
 import sqlite3
 from contextlib import closing
 from .worker_reservations import JobReservations, valid_token
+from .worker_offline import OfflineJobController
 
 
 class WorkerProtocolError(ValueError):
@@ -49,7 +50,7 @@ def parse_request(raw: bytes) -> dict:
                     and type(request.get("task_id")) is int
                     and 0 < request["task_id"] <= 9223372036854775807)
                 or (set(request) == {"op", "version", "task_id", "token"}
-                    and request.get("op") in ("reserve", "cancel_reservation")
+                    and request.get("op") in ("reserve", "cancel_reservation", "execute_offline")
                     and type(request.get("task_id")) is int
                     and 0 < request["task_id"] <= 9223372036854775807
                     and valid_token(request.get("token")))
@@ -96,6 +97,7 @@ async def handle_connection(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, *,
     allowed_uid: int, db_path: Path | None = None,
     reservations: JobReservations | None = None,
+    offline: OfflineJobController | None = None,
 ) -> None:
     try:
         if type(allowed_uid) is not int or allowed_uid < 0:
@@ -108,13 +110,19 @@ async def handle_connection(
         request = parse_request(raw[:-1])
         if request["op"] == "ping":
             response = {"version": 1, "status": "ready", "downloads_enabled": False}
+        elif request["op"] == "execute_offline":
+            response = (await offline.execute(db_path, request["task_id"], request["token"])
+                        if offline is not None else
+                        {"version": 1, "status": "rejected", "downloads_enabled": False})
         elif request["op"] in ("reserve", "cancel_reservation"):
             if reservations is None:
                 accepted = False
             elif request["op"] == "reserve":
                 accepted = reservations.accept(db_path, request["task_id"], request["token"])
             else:
-                accepted = reservations.cancel(request["task_id"], request["token"])
+                accepted = (offline.cancel(request["task_id"], request["token"])
+                            if offline is not None else
+                            reservations.cancel(request["task_id"], request["token"]))
             response = {"version": 1, "status": "accepted" if accepted else "rejected",
                         "downloads_enabled": False}
         else:
@@ -155,8 +163,9 @@ async def serve(socket_path: Path, *, allowed_uid: int, db_path: Path | None = N
     if socket_path.exists() or socket_path.is_symlink():
         raise WorkerProtocolError("Сокет уже существует")
     reservations = JobReservations()
+    offline = OfflineJobController(reservations)
     server = await asyncio.start_unix_server(
-        lambda r, w: handle_connection(r, w, allowed_uid=allowed_uid, db_path=db_path, reservations=reservations),
+        lambda r, w: handle_connection(r, w, allowed_uid=allowed_uid, db_path=db_path, reservations=reservations, offline=offline),
         path=str(socket_path), limit=MAX_MESSAGE + 2,
     )
     try:
