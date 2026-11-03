@@ -160,9 +160,12 @@ async def preview_format(callback: CallbackQuery) -> None:
                     media_key=media_key,
                     variant=variant,
                 )
-                admit_download(db, task_id=task_id)
-            except AdmissionDenied:
-                task_id, created = None, False
+                try:
+                    admit_download(db, task_id=task_id)
+                except AdmissionDenied:
+                    if created:
+                        db.execute("DELETE FROM tasks WHERE id=? AND status='queued'", (task_id,))
+                    task_id, created = None, False
             except OverflowError:
                 task_id, created = None, False
                 queue_full = True
