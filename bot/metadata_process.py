@@ -66,7 +66,12 @@ async def run_json_subprocess(
         return await asyncio.wait_for(read_result(), timeout=timeout_seconds)
     except BaseException:
         _kill_group(process)
-        await asyncio.shield(process.wait())
+        waiter = asyncio.create_task(process.wait())
+        try:
+            await asyncio.shield(waiter)
+        finally:
+            if not waiter.done():
+                waiter.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
         raise
 
 
