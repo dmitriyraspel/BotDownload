@@ -1,8 +1,10 @@
 # Dedicated worker IPC: experimental, downloads disabled
 
-The first independent worker is implemented in `bot.worker_service`. It
-accepts **only** `{"op":"ping","version":1}` over a local Unix socket.
-It never executes arbitrary commands, processes URLs, or downloads media.
+The independent offline worker is implemented in `bot.worker_service`.
+It exposes versioned, strictly validated Unix-socket operations for ping,
+read-only task status, lease reservation/cancellation and a fixed offline
+test fixture (`execute_offline`). It does not accept arbitrary commands,
+URLs, shell arguments or media files and cannot download media.
 The Telegram bot does not start this service automatically.
 
 ## Optional Debian 12 installation (administrator only)
@@ -52,7 +54,8 @@ operations, malformed frames, and oversized requests. The socket runtime
 directory must be owned by the worker process and must not be
 world-writable or a symlink. The client uses a finite positive timeout
 and treats missing or malformed responses as failure. These are
-defense-in-depth checks; the IPC protocol still exposes only ping.
+defense-in-depth checks; all accepted operations remain offline and
+`downloads_enabled=false`.
 
 
 ## Task status IPC (read-only)
@@ -71,11 +74,11 @@ read-only snapshot or a future broker-mediated lookup. With the default
 systemd unit and ordinary private bot database permissions, lookup returns
 `unavailable`; the ping operation still works.
 
-Cancellation, retries, task claiming and media execution are deliberately
-**not** implemented in this protocol yet. An IPC status query cannot cancel
-a running job; no download is started. This avoids granting the worker
-unnecessary database write privileges before the full job lifecycle and
-network confinement are reviewed.
+Task claiming and retries remain the broker's responsibility. IPC status
+queries are read-only. The `cancel_reservation` operation can revoke a
+matching reservation and signal an active offline fixture, but it is not
+a production media cancellation protocol. The worker retains read-only
+database access; no media download is started.
 
 
 ## Broker lease lifecycle (not wired to execution)
@@ -88,11 +91,11 @@ transitions use SQLite conditional updates and require a matching token,
 unexpired lease and still-active task. Explicit cancellation revokes
 the lease; expiry marks abandoned leases without automatically retrying.
 
-This is a **foundation**, not a running job dispatcher. Tokens are not
-yet transmitted over IPC, the system worker does not claim tasks,
-process files, or terminate subprocesses, and no automatic recovery
-of lease-owned jobs is installed. In particular, lease expiry is
-not a substitute for killing a running process. The separate worker
+This is a **foundation**, not a production media dispatcher. Tokens are
+transmitted only for authenticated reservation/fixture operations; the
+system worker does not claim tasks or perform media downloads. The broker
+reconciles leases at bot startup, but lease expiry is not a substitute
+for killing a running process. The separate worker
 still denies all IP traffic and cannot download media. Do not grant
 the worker write access to the bot's database.
 
@@ -108,9 +111,10 @@ are rejected. `cancel_worker_reservation` revokes the matching
 in-memory reservation. The broker can separately use
 `worker_leases.transition_job` and `cancel_job` to update durable state.
 
-**Important limitations:** This is a non-executing handshake only.
-No Telegram handler or queue worker dispatches jobs automatically.
-The worker does not download, create output files, or launch processes.
+**Important limitations:** Reservation is a non-executing handshake.
+The separate, opt-in offline fixture can launch a fixed local subprocess;
+no Telegram handler or production queue worker dispatches media jobs.
+The worker never downloads media.
 A successful reserve response does not mean media work started or
 completed. Cancellation clears an in-memory reservation only, not a
 running subprocess. The broker must persist the corresponding lease
@@ -130,20 +134,20 @@ command with no shell, in an existing private workspace, with a deadline,
 process-group termination on cancellation and basic output checks.
 The generated artifact contains only the literal `offline-worker-ok`.
 No URLs, downloader arguments, Telegram credentials, or external network
-access are accepted. It is **not wired into** the IPC worker service.
+access are accepted. The fixed fixture **is** wired into worker IPC through
+`execute_offline`, but it is not wired into production Telegram polling.
 
 `bot.worker_recovery.reconcile_worker_leases` provides an explicit,
 transactional broker-side reconciliation operation. It expires stale
 leases, revokes reservations for tasks no longer downloading or
 processing, and fails downloading tasks whose leases were revoked or
 expired. It does not automatically retry downloads or touch ambiguous
-Telegram uploads. The broker must invoke it explicitly; it is not yet
-a background recovery daemon.
+Telegram uploads. The bot's startup recovery invokes it before regular interrupted-task
+requeueing; there is no background lease-recovery daemon.
 
 These modules are offline building blocks. They do not establish
 filesystem, cgroup or network confinement of arbitrary media processes,
-and they do not yet deliver files to Telegram. The live worker remains
-non-executing and `downloads_enabled=false`.
+and they do not yet deliver files to Telegram. The live worker remains media-disabled and `downloads_enabled=false`.
 
 
 ## Network isolation gate (offline mode only)
@@ -175,8 +179,9 @@ before a best-effort IPC cancellation. A claimed task is never
 automatically retried after an uncertain IPC outcome.
 
 `revoke_claimed_task` revokes the durable capability. **This does not
-terminate a subprocess** and does not yet notify the live worker:
-the current worker supports only reservation cancellation. These broker
+terminate a subprocess**, and it cannot notify the worker without the
+original plaintext token. The separate offline integration knows its token
+and sends `cancel_reservation` explicitly. These broker
 helpers are deliberately not connected to the Telegram polling loop.
 
 **Deployment gate:** media execution and external networking remain
