@@ -326,6 +326,7 @@ def get_task(connection: sqlite3.Connection, task_id: int) -> dict | None:
     """Read the persisted work item without exposing arbitrary SQL to workers."""
     if type(task_id) is not int or task_id <= 0:
         return None
+    previous_factory = connection.row_factory
     connection.row_factory = sqlite3.Row
     try:
         row = connection.execute(
@@ -336,7 +337,7 @@ def get_task(connection: sqlite3.Connection, task_id: int) -> dict | None:
         ).fetchone()
         return dict(row) if row is not None else None
     finally:
-        connection.row_factory = None
+        connection.row_factory = previous_factory
 
 
 def count_daily_deliveries(connection: sqlite3.Connection, *,
