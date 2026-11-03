@@ -66,3 +66,18 @@ def test_restart_recovers_interrupted_jobs(tmp_path):
         assert db.execute(
             "SELECT status FROM tasks WHERE id=?", (b,)
         ).fetchone()[0] == "queued"
+
+
+def test_one_preview_cannot_queue_two_formats(tmp_path):
+    with database(tmp_path / "queue.sqlite") as db:
+        first, created = _enqueue(db, "1")
+        assert created
+        second, created = enqueue_task(
+            db, max_pending=20, user_id=1, chat_id=1, message_id=1,
+            callback_key="1:MP3", source_url="https://youtu.be/abc",
+            media_key="youtube:abc", variant="MP3",
+        )
+        assert second == first and not created
+        assert db.execute(
+            "SELECT COUNT(*) FROM tasks WHERE chat_id=1 AND message_id=1"
+        ).fetchone()[0] == 1
