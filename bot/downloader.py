@@ -8,6 +8,7 @@ import sys
 from tempfile import TemporaryDirectory
 
 from .local_tools import deno_path
+from .process_runner import ProcessExecutionError, run_bounded_process
 from .telegram_handlers import validate_media_url
 
 
@@ -66,17 +67,12 @@ async def download_to_temporary(url: str, mode: str, duration: object,
     directory = Path(temporary.name)
     try:
         command = build_command(url, mode, max_bytes, directory)
-        process = await asyncio.create_subprocess_exec(
-            *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-        )
         try:
-            await asyncio.wait_for(process.wait(), timeout=timeout_seconds)
-        except asyncio.TimeoutError as exc:
-            process.kill()
-            await process.wait()
-            raise DownloadError("Превышено время скачивания") from exc
-        if process.returncode != 0:
-            raise DownloadError("Не удалось скачать или обработать файл")
+            await run_bounded_process(
+                command, cwd=directory, timeout_seconds=timeout_seconds,
+            )
+        except ProcessExecutionError as exc:
+            raise DownloadError("Не удалось скачать или обработать файл") from exc
         files = [p for p in directory.iterdir() if p.is_file()]
         if len(files) != 1:
             raise DownloadError("Неоднозначный результат скачивания")
