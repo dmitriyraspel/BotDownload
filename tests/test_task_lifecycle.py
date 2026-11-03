@@ -23,6 +23,7 @@ def status(path, task_id):
 
 
 def run(path, task_id, root, processor):
+    root.mkdir(parents=True, exist_ok=True)
     return asyncio.run(prepare_claimed_task(
         db_path=path, task_id=task_id,
         configured_download_dir=str(root), expected_bytes=0,
