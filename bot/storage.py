@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS daily_usage (
     task_id INTEGER NOT NULL UNIQUE REFERENCES tasks(id),
     PRIMARY KEY(user_id,utc_day,task_id)
 );
+CREATE TABLE IF NOT EXISTS delivery_reservations (
+    task_id INTEGER PRIMARY KEY REFERENCES tasks(id),
+    user_id INTEGER NOT NULL,
+    utc_day TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS delivery_reservations_user_day_idx
+    ON delivery_reservations(user_id, utc_day);
 CREATE TABLE IF NOT EXISTS link_attempts (
     user_id INTEGER NOT NULL,
     attempted_at INTEGER NOT NULL
@@ -365,3 +372,80 @@ def quota_available(connection: sqlite3.Connection, *, user_id: int,
         raise ValueError("Некорректный дневной лимит")
     used = count_daily_deliveries(connection, user_id=user_id, utc_day=utc_day)
     return user_id in trusted_users or used < daily_limit
+
+
+def reserve_delivery_slot(connection: sqlite3.Connection, *, task_id: int,
+                          utc_day: str, daily_limit: int,
+                          trusted_users: tuple[int, ...] | list[int] = ()) -> bool:
+    """Reserve quota before Telegram upload; atomic across SQLite connections.
+
+    Returns False if the task is ineligible or the quota is exhausted.
+    Reservations are per-task and idempotent. Call release_delivery_slot
+    after a failed upload; finalize via complete_reserved_delivery only
+    after Telegram confirms delivery.
+    """
+    if type(task_id) is not int or task_id <= 0:
+        return False
+    if type(daily_limit) is not int or daily_limit <= 0:
+        raise ValueError("Некорректный дневной лимит")
+    from datetime import date
+    try:
+        if date.fromisoformat(utc_day).isoformat() != utc_day:
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Некорректная UTC-дата") from exc
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
+    row = connection.execute(
+        "SELECT user_id,status FROM tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    if row is None or row[1] != "upload_pending":
+        return False
+    user_id = row[0]
+    existing = connection.execute(
+        "SELECT utc_day FROM delivery_reservations WHERE task_id=?", (task_id,)
+    ).fetchone()
+    if existing is not None:
+        return existing[0] == utc_day
+    if user_id not in trusted_users:
+        used = count_daily_deliveries(connection, user_id=user_id, utc_day=utc_day)
+        reserved = connection.execute(
+            """SELECT COUNT(*) FROM delivery_reservations
+            WHERE user_id=? AND utc_day=?""", (user_id, utc_day)
+        ).fetchone()[0]
+        if used + reserved >= daily_limit:
+            return False
+    connection.execute(
+        """INSERT INTO delivery_reservations(task_id,user_id,utc_day)
+        VALUES (?,?,?)""", (task_id, user_id, utc_day)
+    )
+    return True
+
+
+def release_delivery_slot(connection: sqlite3.Connection, task_id: int) -> bool:
+    """Release a reservation after a confirmed non-delivery."""
+    return connection.execute(
+        "DELETE FROM delivery_reservations WHERE task_id=?", (task_id,)
+    ).rowcount == 1
+
+
+def complete_reserved_delivery(connection: sqlite3.Connection, *,
+                               task_id: int, telegram_file_id: str,
+                               cache_hit: bool = False) -> bool:
+    """Finalize a reserved, confirmed Telegram delivery exactly once.
+
+    Caller must use a transaction; record_delivery and reservation deletion
+    happen together. Do not release reservations after ambiguous upload errors
+    without first resolving whether Telegram accepted the message.
+    """
+    row = connection.execute(
+        "SELECT utc_day FROM delivery_reservations WHERE task_id=?", (task_id,)
+    ).fetchone()
+    if row is None:
+        return False
+    if not record_delivery(connection, task_id, telegram_file_id, row[0],
+                           cache_hit=cache_hit):
+        return False
+    connection.execute("DELETE FROM delivery_reservations WHERE task_id=?",
+                       (task_id,))
+    return True
