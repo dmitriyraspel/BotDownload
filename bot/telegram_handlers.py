@@ -147,10 +147,16 @@ async def preview_format(callback: CallbackQuery) -> None:
             url, media_key = selection
             try:
                 task_id, created = enqueue_task(
-                    db, max_pending=load_settings().data["limits"]["max_pending_tasks"], user_id=callback.from_user.id, chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id,
-                callback_key=f"{callback.message.chat.id}:{callback.message.message_id}:{callback.from_user.id}:{variant}",
-                    source_url=url, media_key=media_key, variant=variant)
+                    db,
+                    max_pending=load_settings().data["limits"]["max_pending_tasks"],
+                    user_id=callback.from_user.id,
+                    chat_id=callback.message.chat.id,
+                    message_id=callback.message.message_id,
+                    callback_key=f"{callback.message.chat.id}:{callback.message.message_id}:{callback.from_user.id}:{variant}",
+                    source_url=url,
+                    media_key=media_key,
+                    variant=variant,
+                )
             except OverflowError:
                 task_id, created = None, False
                 queue_full = True
