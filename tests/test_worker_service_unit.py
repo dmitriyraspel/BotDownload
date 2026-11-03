@@ -5,9 +5,9 @@ from pathlib import Path
 UNIT = Path(__file__).resolve().parents[1] / "deploy" / "botdownload-worker.service.example"
 
 
-def test_worker_unit_runs_as_separate_unprivileged_account():
+def test_offline_worker_unit_runs_as_v1_service_account():
     text = UNIT.read_text(encoding="utf-8")
-    assert "User=botdownload-worker" in text
+    assert "User=tgbot" in text
     assert "Group=tgbot" in text
     assert "NoNewPrivileges=yes" in text
     assert "CapabilityBoundingSet=" in text
