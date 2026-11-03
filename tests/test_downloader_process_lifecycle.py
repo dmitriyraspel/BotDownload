@@ -12,6 +12,11 @@ from bot import downloader
 from bot.process_runner import ProcessExecutionError
 
 
+def fake_egress_guard(command):
+    """Only for mocked process runners; not a production security boundary."""
+    return ["fake-sandbox", *command]
+
+
 def test_download_uses_bounded_process_runner(monkeypatch):
     seen = []
 
@@ -23,7 +28,7 @@ def test_download_uses_bounded_process_runner(monkeypatch):
     monkeypatch.setattr(downloader, "build_command", lambda url, mode, max_bytes, output: ["fake", url])
     temporary, result = asyncio.run(downloader.download_to_temporary(
         "https://example.org/video", "mp3", duration=20,
-        max_duration_seconds=60, max_bytes=100, timeout_seconds=5,
+        max_duration_seconds=60, max_bytes=100, timeout_seconds=5, network_guard=fake_egress_guard,
     ))
     try:
         assert result.read_bytes() == b"audio"
@@ -46,7 +51,7 @@ def test_download_failure_cleans_temporary_directory(monkeypatch):
     with pytest.raises(downloader.DownloadError):
         asyncio.run(downloader.download_to_temporary(
             "https://example.org/video", "mp3", duration=20,
-            max_duration_seconds=60, max_bytes=100, timeout_seconds=5,
+            max_duration_seconds=60, max_bytes=100, timeout_seconds=5, network_guard=fake_egress_guard,
         ))
     assert len(directories) == 1
     assert not directories[0].exists()
