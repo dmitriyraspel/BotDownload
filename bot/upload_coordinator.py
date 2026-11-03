@@ -27,6 +27,32 @@ async def upload_one_task(
     """
     if max_attempts <= 0 or second_attempt_delay_seconds < 0 or third_attempt_delay_seconds < 0:
         raise ValueError("Некорректные параметры повторной отправки")
+    # A quota rejection is not a Telegram attempt. Check before incrementing
+    # upload_attempts; the delivery claim still performs the atomic check.
+    from datetime import datetime, timezone
+    from .storage import database
+    if type(daily_limit) is not int or daily_limit <= 0:
+        raise ValueError("Некорректный дневной лимит")
+    utc_day = datetime.now(timezone.utc).date().isoformat()
+    with database(db_path) as db:
+        row = db.execute(
+            "SELECT user_id FROM tasks WHERE id=? AND status='upload_pending'",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        user_id = row[0]
+        if user_id not in trusted_users:
+            used = db.execute(
+                "SELECT COUNT(*) FROM daily_usage WHERE user_id=? AND utc_day=?",
+                (user_id, utc_day),
+            ).fetchone()[0]
+            reserved = db.execute(
+                "SELECT COUNT(*) FROM delivery_reservations WHERE user_id=? AND utc_day=?",
+                (user_id, utc_day),
+            ).fetchone()[0]
+            if used + reserved >= daily_limit:
+                return False
     if not reserve_upload_attempt(db_path, task_id, max_attempts=max_attempts):
         return False
 
