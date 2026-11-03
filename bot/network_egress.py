@@ -35,9 +35,12 @@ def systemd_metadata_guard(command: list[str], *, user: str = "tgbot") -> list[s
         raise EgressConfigurationError("Для изоляции требуется systemd")
     if os.geteuid() != 0:
         raise EgressConfigurationError("Запуск изолированного сервиса требует привилегий")
-    if not user or not user.replace("-", "").replace("_", "").isalnum():
+    if (not isinstance(user, str) or not 1 <= len(user) <= 32
+            or not user.isascii() or not user[0].isalpha()
+            or not all(ch.isascii() and (ch.isalnum() or ch in "_-") for ch in user)):
         raise EgressConfigurationError("Недопустимое имя пользователя")
-    if not command or any(type(arg) is not str or not arg or "\x00" in arg for arg in command):
+    if (not isinstance(command, (list, tuple)) or not command
+            or any(type(arg) is not str or not arg or "\x00" in arg for arg in command)):
         raise EgressConfigurationError("Недопустимая команда")
     project_root = Path(__file__).resolve().parent.parent
     return [
