@@ -39,9 +39,11 @@ def systemd_metadata_guard(command: list[str], *, user: str = "tgbot") -> list[s
         raise EgressConfigurationError("Недопустимое имя пользователя")
     if not command or any(type(arg) is not str or not arg or "\x00" in arg for arg in command):
         raise EgressConfigurationError("Недопустимая команда")
+    project_root = Path(__file__).resolve().parent.parent
     return [
         "systemd-run", "--system", "--quiet", "--wait", "--pipe", "--collect",
         "--property=Type=exec", f"--property=User={user}",
+        f"--property=WorkingDirectory={project_root}",
         "--property=NoNewPrivileges=yes", "--property=PrivateTmp=yes",
         "--property=ProtectSystem=strict", "--property=ProtectHome=yes",
         "--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
