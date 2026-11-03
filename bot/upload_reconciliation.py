@@ -30,6 +30,27 @@ def ambiguous_uploads(db_path: Path) -> list[dict]:
     ]
 
 
+
+
+def confirm_delivered(db_path: Path, *, task_id: int,
+                      telegram_file_id: str) -> bool:
+    """Operator-confirmed successful delivery, never a network retry.
+
+    The operator must independently verify the Telegram message and file_id.
+    Only a reserved, still-uploading task can be completed. This operation
+    does not send a message or touch the staged file.
+    """
+    from .storage import complete_reserved_delivery
+    if type(task_id) is not int or task_id <= 0:
+        return False
+    if not isinstance(telegram_file_id, str) or not telegram_file_id.strip():
+        raise ValueError("Требуется подтверждённый Telegram file_id")
+    with database(db_path) as db:
+        db.execute("BEGIN IMMEDIATE")
+        return complete_reserved_delivery(
+            db, task_id=task_id, telegram_file_id=telegram_file_id
+        )
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Read-only report of ambiguous Telegram deliveries")
