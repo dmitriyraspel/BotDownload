@@ -5,10 +5,12 @@ Deployment must validate kernel egress confinement before adding either.
 """
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 import socket
 import struct
+import stat
 
 
 class WorkerProtocolError(ValueError):
@@ -18,11 +20,20 @@ class WorkerProtocolError(ValueError):
 MAX_MESSAGE = 4096
 
 
+def _unique_json_pairs(pairs: list[tuple[str, object]]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise WorkerProtocolError("Повторяющийся ключ JSON")
+        result[key] = value
+    return result
+
+
 def parse_request(raw: bytes) -> dict:
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_MESSAGE:
         raise WorkerProtocolError("Недопустимый размер запроса")
     try:
-        request = json.loads(raw.decode("utf-8"))
+        request = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_json_pairs)
     except (UnicodeError, ValueError) as exc:
         raise WorkerProtocolError("Некорректный JSON") from exc
     if (not isinstance(request, dict) or set(request) != {"op", "version"}
@@ -80,7 +91,13 @@ async def serve(socket_path: Path, *, allowed_uid: int) -> None:
             or type(allowed_uid) is not int or allowed_uid < 0):
         raise WorkerProtocolError("Неверная конфигурация сокета")
     parent = socket_path.parent
-    if not parent.is_dir() or parent.is_symlink():
+    try:
+        parent_info = parent.lstat()
+    except OSError as exc:
+        raise WorkerProtocolError("Каталог сокета отсутствует") from exc
+    if (not stat.S_ISDIR(parent_info.st_mode)
+            or parent_info.st_uid != os.geteuid()
+            or parent_info.st_mode & 0o002):
         raise WorkerProtocolError("Каталог сокета отсутствует или небезопасен")
     if socket_path.exists() or socket_path.is_symlink():
         raise WorkerProtocolError("Сокет уже существует")
@@ -104,7 +121,9 @@ async def serve(socket_path: Path, *, allowed_uid: int) -> None:
 
 async def ping(socket_path: Path, *, timeout: float = 3.0) -> bool:
     """Fail closed: an IPC ping is not proof of egress isolation."""
-    if not isinstance(socket_path, Path) or not socket_path.is_absolute():
+    if (not isinstance(socket_path, Path) or not socket_path.is_absolute()
+            or isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout) or timeout <= 0):
         return False
     try:
         reader, writer = await asyncio.wait_for(
