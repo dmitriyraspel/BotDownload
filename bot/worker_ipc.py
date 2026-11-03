@@ -55,14 +55,14 @@ async def handle_connection(
         if peer_uid(writer) != allowed_uid:
             raise WorkerProtocolError("Доступ запрещён")
         raw = await asyncio.wait_for(reader.readline(), timeout=3)
-        if not raw.endswith(b"\\n") or len(raw) > MAX_MESSAGE + 1:
+        if not raw.endswith(b"\n") or len(raw) > MAX_MESSAGE + 1:
             raise WorkerProtocolError("Недопустимая длина сообщения")
         parse_request(raw[:-1])
         response = {"version": 1, "status": "ready", "downloads_enabled": False}
     except (WorkerProtocolError, asyncio.TimeoutError, asyncio.LimitOverrunError):
         response = {"version": 1, "status": "rejected"}
     try:
-        writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\\n")
+        writer.write(json.dumps(response, separators=(",", ":")).encode() + b"\n")
         await asyncio.wait_for(writer.drain(), timeout=3)
     except (OSError, ConnectionError, asyncio.TimeoutError):
         pass
@@ -111,10 +111,10 @@ async def ping(socket_path: Path, *, timeout: float = 3.0) -> bool:
             asyncio.open_unix_connection(str(socket_path)), timeout=timeout,
         )
         try:
-            writer.write(b'{"op":"ping","version":1}\\n')
+            writer.write(b'{"op":"ping","version":1}\n')
             await asyncio.wait_for(writer.drain(), timeout=timeout)
             response = await asyncio.wait_for(reader.readline(), timeout=timeout)
-            return response == b'{"version":1,"status":"ready","downloads_enabled":false}\\n'
+            return response == b'{"version":1,"status":"ready","downloads_enabled":false}\n'
         finally:
             writer.close()
             await writer.wait_closed()
