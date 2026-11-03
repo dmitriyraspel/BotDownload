@@ -34,7 +34,7 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
             or not parts.path.startswith("/")
         ):
             raise UnsafeNetworkTarget("Недопустимый HTTPS-адрес")
-        if (not re.fullmatch(r"[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", host)
+        if (not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", host)
                 or any(label.startswith("-") or label.endswith("-") or len(label) > 63
                        for label in host.split("."))):
             raise UnsafeNetworkTarget("Недопустимое доменное имя")
