@@ -291,3 +291,31 @@ def task_is_cancelled(connection: sqlite3.Connection, task_id: int) -> bool:
         "SELECT status FROM tasks WHERE id=?", (task_id,)
     ).fetchone()
     return row is not None and row[0] == "cancelled"
+
+
+def mark_file_ready(connection: sqlite3.Connection, task_id: int, ready_file: str) -> bool:
+    """Atomically publish a prepared file path only from processing state.
+
+    The caller must have staged the file in a bot-owned private directory.
+    This method never opens, deletes, or trusts the file path itself.
+    """
+    if type(task_id) is not int or task_id <= 0:
+        return False
+    if not isinstance(ready_file, str) or not ready_file.strip() or "\x00" in ready_file:
+        raise ValueError("Некорректный путь готового файла")
+    cursor = connection.execute(
+        """UPDATE tasks SET ready_file=?, status='upload_pending'
+        WHERE id=? AND status='processing' AND ready_file IS NULL""",
+        (ready_file, task_id),
+    )
+    return cursor.rowcount == 1
+
+
+def get_pending_file(connection: sqlite3.Connection, task_id: int) -> str | None:
+    """Retrieve a staged path only for an upload-pending task."""
+    row = connection.execute(
+        """SELECT ready_file FROM tasks
+        WHERE id=? AND status='upload_pending' AND ready_file IS NOT NULL""",
+        (task_id,),
+    ).fetchone()
+    return row[0] if row else None
