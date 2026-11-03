@@ -1,4 +1,4 @@
-"""Opt-in upload coordinator; not started by Telegram polling.
+"""Upload coordinator invoked by the polling upload queue.
 
 Attempts are reserved durably before calling Telegram. An ambiguous timeout
 may mean Telegram delivered the file, so retrying can produce duplicates.
