@@ -70,5 +70,6 @@ def test_download_cancellation_propagates_and_cleans(monkeypatch):
         asyncio.run(downloader.download_to_temporary(
             "https://example.org/video", "mp3", duration=20,
             max_duration_seconds=60, max_bytes=100, timeout_seconds=5,
+            network_guard=fake_egress_guard,
         ))
     assert not directories[0].exists()
