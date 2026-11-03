@@ -57,13 +57,19 @@ async def link(message: Message) -> None:
     except AnalysisError as exc:
         await message.answer(str(exc))
         return
-    duration = info.get("duration")
-    duration_text = f"{int(duration)} сек." if isinstance(duration, (int, float)) and duration >= 0 else "неизвестна"
     from .media_variants import size_label
-    variants = info.get("variants", [])
+    duration = info.get("duration")
+    duration_text = (f"{int(duration) // 60}:{int(duration) % 60:02d}"
+                     if isinstance(duration, (int, float)) and not isinstance(duration, bool)
+                     and duration >= 0 else "неизвестна")
+    date = info.get("upload_date", "")
+    published = f"{date[6:8]}.{date[4:6]}.{date[:4]}" if len(date) == 8 and date.isdigit() else "неизвестна"
+    views = info.get("view_count")
+    views_text = f"{views:,}".replace(",", " ") if isinstance(views, int) and views >= 0 else "неизвестно"
+    uploader = info.get("uploader") or "неизвестен"
     buttons = []
-    details = []
-    for variant in variants:
+    video_row = []
+    for variant in info.get("variants", []):
         quality = variant["quality"]
         kind = variant["kind"]
         if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration > 0:
@@ -71,14 +77,27 @@ async def link(message: Message) -> None:
             if duration > limit:
                 continue
         size = size_label(variant["size"], variant["approximate"])
-        details.append(f"{quality}: {size}")
-        buttons.append([InlineKeyboardButton(text=f"{quality} · {size}", callback_data=f"preview:{quality}")])
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
-    detail_text = "\\n".join(details) if details else "Доступные варианты не определены"
-    card = (f"Название: {info['title']}\\nДлительность: {duration_text}\\n"
-            f"Аудио: {info.get('language', 'Язык аудио не определён')}\\n"
-            f"Варианты:\\n{detail_text}\\n"
-            "Скачивание пока отключено.")
+        if kind == "video":
+            video_row.append(InlineKeyboardButton(text=f"{quality} ({size})", callback_data=f"preview:{quality}"))
+            if len(video_row) == 2:
+                buttons.append(video_row)
+                video_row = []
+        else:
+            if video_row:
+                buttons.append(video_row)
+                video_row = []
+            buttons.append([InlineKeyboardButton(text=f"🎵 Скачать только аудио MP3 ({size})", callback_data="preview:MP3")])
+    if video_row:
+        buttons.append(video_row)
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="preview:cancel")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    card = (f"{info['title']} | {uploader}\\n"
+            f"Дата публикации: {published}\\n"
+            f"Продолжительность: {duration_text}\\n"
+            f"Просмотров: {views_text}\\n\\n"
+            f"Выбранный язык: {info.get('language', 'Язык аудио не определён')}\\n\\n"
+            "Выберите качество:" if len(buttons) > 1 else
+            f"{info['title']}\\nДоступные варианты не определены.")
     # Do not ask Telegram to fetch arbitrary third-party URLs.
     # Only YouTube's dedicated thumbnail CDN is accepted for this preview.
     thumbnail = info.get("thumbnail", "")
@@ -104,3 +123,10 @@ async def link(message: Message) -> None:
 @router.callback_query(F.data.in_({"preview:480p", "preview:720p", "preview:1080p", "preview:MP3"}))
 async def preview_format(callback: CallbackQuery) -> None:
     await callback.answer("Формат выбран. Скачивание пока не включено.", show_alert=True)
+
+
+@router.callback_query(F.data == "preview:cancel")
+async def cancel_preview(callback: CallbackQuery) -> None:
+    if callback.message:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Выбор отменён")
