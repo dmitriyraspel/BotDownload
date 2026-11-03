@@ -1,0 +1,45 @@
+# Dedicated worker IPC: experimental, downloads disabled
+
+The first independent worker is implemented in `bot.worker_service`. It
+accepts **only** `{"op":"ping","version":1}` over a local Unix socket.
+It never executes arbitrary commands, processes URLs, or downloads media.
+The Telegram bot does not start this service automatically.
+
+## Optional Debian 12 installation (administrator only)
+
+The example assumes the repository lives in `/opt/BotDownload`. Adjust the
+systemd unit's `WorkingDirectory` and `ExecStart` for another location;
+never change Python sources or overwrite local `config.yaml`.
+
+1. Create an unprivileged worker account, **different** from the bot account.
+   For example, as root:
+   `useradd --system --no-create-home --shell /usr/sbin/nologin --gid tgbot botdownload-worker`
+   (the `tgbot` group and bot user must already exist).
+2. Install `deploy/botdownload-worker.service.example` as
+   `/etc/systemd/system/botdownload-worker.service`, after reviewing paths
+   and the actual service user/group.
+3. Run `systemctl daemon-reload` and
+   `systemctl enable --now botdownload-worker.service`.
+4. The socket is `/run/botdownload-worker/worker.sock`, inside a
+   systemd-managed runtime directory. It is group-accessible, but the
+   service checks the connecting process's **kernel-provided UID** against
+   `BOTDOWNLOAD_CLIENT_USER=tgbot`. No client-supplied UID is trusted.
+5. To check IPC from the bot account:
+   `sudo -u tgbot /opt/BotDownload/.venv/bin/python -c 'import asyncio; from pathlib import Path; from bot.worker_ipc import ping; print(asyncio.run(ping(Path("/run/botdownload-worker/worker.sock"))))'`
+   Run from the project directory or with its package import path set.
+
+The unit denies **all IP traffic** (`IPAddressDeny=any`,
+`RestrictAddressFamilies=AF_UNIX`). This is deliberate: it does not yet
+host a network-capable extractor. A successful ping establishes only that
+the local IPC channel is working, not that download egress is safe.
+
+## Before enabling media extraction
+
+A separate, explicitly reviewed worker protocol must restrict requested
+operations to validated task IDs and immutable server-side task data.
+Never accept arbitrary argv, filesystem paths, or shell commands from the
+bot. Implement and test an enforced network boundary that permits public
+HTTPS and legitimate DNS while blocking internal and metadata networks,
+including redirects and DNS rebinding. The service's current all-network
+deny must not be relaxed until live negative and positive checks pass.
+The Telegram bot and its existing download queue remain disabled.
