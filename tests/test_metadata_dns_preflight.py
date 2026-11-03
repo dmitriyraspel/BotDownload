@@ -1,61 +1,29 @@
-"""DNS preflight remains defense in depth in the isolated metadata path."""
+"""Fake-IP compatible metadata admission: URL validation and guarded process."""
 import asyncio
-from unittest.mock import AsyncMock
-
 import pytest
-
 from bot import metadata_process
-from bot.network_security import UnsafeNetworkTarget
 
-
-def fake_egress_guard(command):
-    """Only for mocked process execution, never production confinement."""
+def fake_guard(command):
     return ["fake-sandbox", *command]
 
-
-def test_metadata_rejects_unsafe_dns_before_extraction(monkeypatch):
-    invoked = []
-
-    def unsafe(url, *, allowed_hosts):
-        raise UnsafeNetworkTarget("private")
-
-    async def fake_runner(*args, **kwargs):
-        invoked.append("spawn")
-        return {"title": "unexpected"}
-
-    monkeypatch.setattr(metadata_process, "validate_public_https_target", unsafe, raising=False)
-    monkeypatch.setattr(metadata_process, "run_json_subprocess", fake_runner)
-    # The isolated transport imports the validator directly from network_security.
-    monkeypatch.setattr("bot.network_security.validate_public_https_target", unsafe)
-    with pytest.raises(UnsafeNetworkTarget):
-        asyncio.run(metadata_process.inspect_in_subprocess(
-            "https://youtu.be/abc", timeout_seconds=5,
-            network_guard=fake_egress_guard,
-        ))
-    assert invoked == []
-
-
-def test_metadata_allows_preflight_then_invokes_guarded_process(monkeypatch):
-    seen = []
-
-    def public(url, *, allowed_hosts):
-        seen.append(("dns", url))
-        return ("8.8.8.8",)
-
-    async def fake_runner(command, *, cwd, timeout_seconds):
-        seen.append(("process", command[0]))
-        assert command[0] == "fake-sandbox"
-        assert timeout_seconds == 5
-        return {"title": "test"}
-
-    monkeypatch.setattr("bot.network_security.validate_public_https_target", public)
-    monkeypatch.setattr(metadata_process, "run_json_subprocess", fake_runner)
+def test_fake_ip_dns_is_not_preflighted(monkeypatch):
+    calls = []
+    def forbidden(*args, **kwargs):
+        raise AssertionError("DNS preflight must not run")
+    monkeypatch.setattr("bot.network_security.validate_public_https_target", forbidden)
+    async def runner(command, *, cwd, timeout_seconds):
+        calls.append(command)
+        return {"title": "ok"}
+    monkeypatch.setattr(metadata_process, "run_json_subprocess", runner)
     result = asyncio.run(metadata_process.inspect_in_subprocess(
-        "https://youtu.be/abc", timeout_seconds=5,
-        network_guard=fake_egress_guard,
-    ))
-    assert result["title"] == "test"
-    assert seen == [
-        ("dns", "https://youtu.be/abc"),
-        ("process", "fake-sandbox"),
-    ]
+        "https://youtu.be/abc", timeout_seconds=5, network_guard=fake_guard))
+    assert result["title"] == "ok"
+    assert calls[0][0] == "fake-sandbox"
+
+def test_unprotected_metadata_execution_fails_closed(monkeypatch):
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Must not execute")
+    monkeypatch.setattr(metadata_process, "run_json_subprocess", forbidden)
+    with pytest.raises(metadata_process.MetadataProcessError):
+        asyncio.run(metadata_process.inspect_in_subprocess(
+            "https://youtu.be/abc", timeout_seconds=5, network_guard=lambda c: c))
