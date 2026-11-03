@@ -68,7 +68,7 @@ async def link(message: Message) -> None:
     views_text = f"{views:,}".replace(",", " ") if isinstance(views, int) and views >= 0 else "неизвестно"
     uploader = info.get("uploader") or "неизвестен"
     buttons = []
-    video_row = []
+    choices = []
     for variant in info.get("variants", []):
         quality = variant["quality"]
         kind = variant["kind"]
@@ -77,18 +77,10 @@ async def link(message: Message) -> None:
             if duration > limit:
                 continue
         size = size_label(variant["size"], variant["approximate"])
-        if kind == "video":
-            video_row.append(InlineKeyboardButton(text=f"{quality} ({size})", callback_data=f"preview:{quality}"))
-            if len(video_row) == 2:
-                buttons.append(video_row)
-                video_row = []
-        else:
-            if video_row:
-                buttons.append(video_row)
-                video_row = []
-            buttons.append([InlineKeyboardButton(text=f"🎵 Скачать только аудио MP3 ({size})", callback_data="preview:MP3")])
-    if video_row:
-        buttons.append(video_row)
+        label = f"🎵 MP3 ({size})" if kind == "mp3" else f"{quality} ({size})"
+        choices.append(InlineKeyboardButton(text=label, callback_data=f"preview:{quality}"))
+    for index in range(0, len(choices), 2):
+        buttons.append(choices[index:index + 2])
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="preview:cancel")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     card = (f"{info['title']} | {uploader}\\n"
