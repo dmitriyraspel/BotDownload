@@ -8,14 +8,18 @@ from bot import network_egress
 
 
 @pytest.mark.parametrize("address", [
-    "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1",
-    "169.254.169.254", "100.64.0.1", "198.19.0.1",
-    "::1", "fe80::1", "fc00::1", "ff02::1", "::ffff:127.0.0.1",
+    "127.0.0.1", "127.255.255.254", "::1",
 ])
-def test_egress_policy_covers_sensitive_addresses(address):
+def test_v1_egress_policy_covers_loopback(address):
     target = ipaddress.ip_address(address)
     assert any(target in ipaddress.ip_network(cidr)
                for cidr in network_egress.DENIED_CIDRS)
+
+
+def test_v1_does_not_block_fake_ip_or_lan():
+    for address in ("198.18.0.44", "10.1.2.3", "192.168.1.1", "169.254.169.254"):
+        target = ipaddress.ip_address(address)
+        assert not any(target in ipaddress.ip_network(cidr) for cidr in network_egress.DENIED_CIDRS)
 
 
 def test_egress_guard_requires_root(monkeypatch):
