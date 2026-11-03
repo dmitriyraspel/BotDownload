@@ -11,17 +11,36 @@ from .storage import database
 from .upload_coordinator import upload_one_task
 
 
-def next_due_upload(db_path: Path) -> int | None:
-    """Read the oldest due staged task without changing its status."""
+def next_due_upload(
+    db_path: Path, *, daily_limit: int = 3, trusted_users: tuple[int, ...] = (),
+) -> int | None:
+    """Oldest due task with available UTC quota; never starve other users."""
+    from datetime import datetime, timezone
+    if type(daily_limit) is not int or daily_limit <= 0:
+        raise ValueError("Некорректный дневной лимит")
+    utc_day = datetime.now(timezone.utc).date().isoformat()
     with database(db_path) as db:
-        row = db.execute(
-            """SELECT id FROM tasks
+        rows = db.execute(
+            """SELECT id,user_id FROM tasks
             WHERE status='upload_pending'
               AND ready_file IS NOT NULL AND ready_file != ''
               AND (next_upload_at IS NULL OR julianday(next_upload_at) <= julianday('now'))
-            ORDER BY created_at,id LIMIT 1"""
-        ).fetchone()
-        return row[0] if row else None
+            ORDER BY created_at,id"""
+        ).fetchall()
+        for task_id, user_id in rows:
+            if user_id in trusted_users:
+                return task_id
+            used = db.execute(
+                "SELECT COUNT(*) FROM daily_usage WHERE user_id=? AND utc_day=?",
+                (user_id, utc_day),
+            ).fetchone()[0]
+            reserved = db.execute(
+                "SELECT COUNT(*) FROM delivery_reservations WHERE user_id=? AND utc_day=?",
+                (user_id, utc_day),
+            ).fetchone()[0]
+            if used + reserved < daily_limit:
+                return task_id
+    return None
 
 
 async def run_upload_queue(
@@ -35,7 +54,7 @@ async def run_upload_queue(
     if idle_seconds <= 0:
         raise ValueError("idle_seconds должен быть положительным")
     while not stop.is_set():
-        task_id = next_due_upload(db_path)
+        task_id = next_due_upload(db_path, daily_limit=daily_limit, trusted_users=trusted_users)
         if task_id is not None:
             try:
                 delivered = await upload_one_task(
