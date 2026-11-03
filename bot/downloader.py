@@ -41,7 +41,7 @@ def check_size(size: object, maximum_bytes: int) -> None:
 def build_command(url: str, mode: str, max_bytes: int, output: Path) -> list[str]:
     if not validate_media_url(url):
         raise DownloadError("Недопустимая ссылка")
-    if mode not in ("video", "mp3"):
+    if mode not in ("video", "480p", "720p", "1080p", "mp3"):
         raise DownloadError("Неизвестный формат")
     if type(max_bytes) is not int or max_bytes <= 0:
         raise DownloadError("Недопустимый лимит размера")
@@ -58,7 +58,18 @@ def build_command(url: str, mode: str, max_bytes: int, output: Path) -> list[str
     if mode == "mp3":
         command.extend(["--extract-audio", "--audio-format", "mp3"])
     else:
-        command.extend(["--format", "bv*+ba/b"])
+        if mode == "video":
+            command.extend(["--format", "bv*+ba/b"])
+        else:
+            height = int(mode[:-1])
+            # Require an exact-height video stream; never silently deliver a
+            # different resolution. Prefer MP4/H.264 + M4A/AAC when offered.
+            selector = (
+                f"bv[height={height}][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
+                f"bv[height={height}]+ba/"
+                f"b[height={height}]"
+            )
+            command.extend(["--format", selector, "--merge-output-format", "mp4"])
     return command + ["--", url]
 
 
