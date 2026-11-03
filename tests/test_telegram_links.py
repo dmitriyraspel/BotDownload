@@ -24,3 +24,8 @@ def test_rejected_links():
     ]
     for url in bad:
         assert not validate_media_url(url), url
+
+def test_unlisted_subdomains_rejected():
+    assert not validate_media_url("https://private.youtube.com/watch?v=x")
+    assert not validate_media_url("https://attacker.instagram.com/reel/x")
+    assert validate_media_url("https://vm.tiktok.com/abc")
