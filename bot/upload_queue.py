@@ -4,6 +4,7 @@ Upload attempts and retry deadlines live in SQLite. This worker never deletes
 files and must not run alongside another uploader for the same database.
 """
 import asyncio
+import logging
 from pathlib import Path
 
 from .storage import database
@@ -38,18 +39,17 @@ async def run_upload_queue(
         if task_id is not None:
             try:
                 delivered = await upload_one_task(
-                bot=bot, db_path=db_path, task_id=task_id,
-                configured_download_dir=configured_download_dir,
-                max_bytes=max_bytes, max_attempts=max_attempts,
-                second_attempt_delay_seconds=second_attempt_delay_seconds,
-                third_attempt_delay_seconds=third_attempt_delay_seconds,
-                project_root=project_root,
-                daily_limit=daily_limit, trusted_users=trusted_users,
-                )
+                    bot=bot, db_path=db_path, task_id=task_id,
+                    configured_download_dir=configured_download_dir,
+                    max_bytes=max_bytes, max_attempts=max_attempts,
+                    second_attempt_delay_seconds=second_attempt_delay_seconds,
+                    third_attempt_delay_seconds=third_attempt_delay_seconds,
+                    project_root=project_root,
+                    daily_limit=daily_limit, trusted_users=trusted_users,
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception:
-                import logging
                 logging.exception("Необработанная ошибка очереди отправки задачи %d", task_id)
                 delivered = False
             if delivered:
