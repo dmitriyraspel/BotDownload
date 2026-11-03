@@ -129,11 +129,13 @@ async def link(message: Message) -> None:
 @router.callback_query(F.data.in_({"preview:480p", "preview:720p", "preview:1080p", "preview:MP3"}))
 async def preview_format(callback: CallbackQuery) -> None:
     from pathlib import Path
-    from .storage import database, select_preview, create_task
+    from .storage import database, select_preview, enqueue_task
+    from .config import load_settings
     if not callback.message:
         await callback.answer("Карточка недоступна", show_alert=True)
         return
     variant = (callback.data or "").removeprefix("preview:")
+    queue_full = False
     with database(Path("data/bot.sqlite")) as db:
         selection = select_preview(
             db, chat_id=callback.message.chat.id, message_id=callback.message.message_id,
@@ -143,12 +145,18 @@ async def preview_format(callback: CallbackQuery) -> None:
             created = False
         else:
             url, media_key = selection
-            task_id, created = create_task(
-                db, user_id=callback.from_user.id, chat_id=callback.message.chat.id,
+            try:
+                task_id, created = enqueue_task(
+                    db, max_pending=load_settings().data["limits"]["max_pending_tasks"], user_id=callback.from_user.id, chat_id=callback.message.chat.id,
                 message_id=callback.message.message_id,
                 callback_key=f"{callback.message.chat.id}:{callback.message.message_id}:{callback.from_user.id}:{variant}",
-                source_url=url, media_key=media_key, variant=variant)
-    if task_id is None:
+                    source_url=url, media_key=media_key, variant=variant)
+            except OverflowError:
+                task_id, created = None, False
+                queue_full = True
+    if queue_full:
+        await callback.answer("Очередь заполнена. Попробуйте позже.", show_alert=True)
+    elif task_id is None:
         await callback.answer("Эта кнопка недоступна или карточка отменена", show_alert=True)
     else:
         note = "Выбор сохранён" if created else "Выбор уже сохранён"
