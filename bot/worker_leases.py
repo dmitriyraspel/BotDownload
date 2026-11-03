@@ -49,7 +49,6 @@ def offer_job(db: sqlite3.Connection, task_id: int, *, ttl_seconds: int = 60) ->
     _validate_id(task_id)
     _validate_ttl(ttl_seconds)
     _begin(db)
-    db.executescript(_SCHEMA) if False else None
     db.execute(_SCHEMA)
     row = db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
     if row is None or row[0] != "downloading":
