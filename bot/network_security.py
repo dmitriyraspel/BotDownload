@@ -38,6 +38,12 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
                 or any(label.startswith("-") or label.endswith("-") or len(label) > 63
                        for label in host.split("."))):
             raise UnsafeNetworkTarget("Недопустимое доменное имя")
+        if (allowed_hosts is not None and
+                (not isinstance(allowed_hosts, (set, frozenset))
+                 or not allowed_hosts
+                 or any(type(item) is not str or item != item.lower()
+                        for item in allowed_hosts))):
+            raise UnsafeNetworkTarget("Некорректный список разрешённых доменов")
         if allowed_hosts is not None and host.lower() not in allowed_hosts:
             raise UnsafeNetworkTarget("Домен не разрешён")
         # Block literal IP hosts; approved providers use DNS hostnames.
@@ -58,8 +64,14 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
                     or result[0] not in (socket.AF_INET, socket.AF_INET6)
                     or result[1] != socket.SOCK_STREAM
                     or not isinstance(result[4], tuple)
-                    or len(result[4]) < 2
-                    or not isinstance(result[4][0], str)):
+                    or len(result[4]) != (2 if result[0] == socket.AF_INET else 4)
+                    or not isinstance(result[4][0], str)
+                    or type(result[4][1]) is not int or result[4][1] != 443
+                    or (result[0] == socket.AF_INET6
+                        and (type(result[4][2]) is not int
+                             or type(result[4][3]) is not int
+                             or result[4][2] != 0
+                             or result[4][3] != 0))):
                 raise UnsafeNetworkTarget("Некорректный ответ DNS")
             address = ipaddress.ip_address(result[4][0])
             if ((result[0] == socket.AF_INET) !=
