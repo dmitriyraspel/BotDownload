@@ -91,3 +91,36 @@ def test_ffmpeg_rejects_input_symlink(tmp_path):
         pytest.skip("Symlinks unavailable on this system")
     with pytest.raises(MediaProcessingError):
         validate_local_media_file(link, root)
+
+
+def test_ffmpeg_rejects_playlist_input(tmp_path):
+    root = tmp_path / "work"
+    root.mkdir()
+    playlist = root / "remote.m3u8"
+    playlist.write_text("#EXTM3U\nhttps://127.0.0.1/private")
+    with pytest.raises(MediaProcessingError):
+        validate_local_media_file(playlist, root)
+
+
+def test_ffmpeg_rejects_concat_input(tmp_path):
+    root = tmp_path / "work"
+    root.mkdir()
+    playlist = root / "sources.ffconcat"
+    playlist.write_text("ffconcat version 1.0\nfile /etc/passwd")
+    with pytest.raises(MediaProcessingError):
+        validate_local_media_file(playlist, root)
+
+
+def test_ffmpeg_rejects_output_size_limit_before_launch(tmp_path):
+    import asyncio
+    from bot.ffmpeg_security import run_ffmpeg
+    root = tmp_path / "work"
+    root.mkdir()
+    source = root / "source.mp4"
+    source.write_bytes(b"not a real movie")
+    with pytest.raises(MediaProcessingError, match="ограничения"):
+        asyncio.run(run_ffmpeg(
+            executable=tmp_path / "ffmpeg", input_file=source,
+            output_file=root / "output.mp3", workdir=root,
+            mp3=True, timeout=10, max_output_bytes=0,
+        ))
