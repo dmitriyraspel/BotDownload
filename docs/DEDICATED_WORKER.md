@@ -53,3 +53,26 @@ directory must be owned by the worker process and must not be
 world-writable or a symlink. The client uses a finite positive timeout
 and treats missing or malformed responses as failure. These are
 defense-in-depth checks; the IPC protocol still exposes only ping.
+
+
+## Task status IPC (read-only)
+
+A second permitted operation is `{"op":"task_status","version":1,"task_id":123}`.
+The worker reads **only** the task's status from an explicitly configured
+SQLite database using a read-only connection. It does not claim jobs,
+execute extractors, accept URLs or paths, or mutate task state. The bot-side
+client is `bot.worker_client.query_task_status`; it is not automatically
+called by the Telegram polling process.
+
+To opt into SQLite status lookup, set `BOTDOWNLOAD_WORKER_DB` to an absolute
+path readable by the dedicated worker account. Do **not** make the bot's
+database or directory world-readable. Prefer a dedicated, access-controlled
+read-only snapshot or a future broker-mediated lookup. With the default
+systemd unit and ordinary private bot database permissions, lookup returns
+`unavailable`; the ping operation still works.
+
+Cancellation, retries, task claiming and media execution are deliberately
+**not** implemented in this protocol yet. An IPC status query cannot cancel
+a running job; no download is started. This avoids granting the worker
+unnecessary database write privileges before the full job lifecycle and
+network confinement are reviewed.
