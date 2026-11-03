@@ -19,7 +19,8 @@ def validate_media_url(value: str) -> bool:
         host = (parsed.hostname or "").lower()
         if (parsed.scheme != "https" or not host or parsed.username or parsed.password
                 or parsed.port not in (None, 443) or parsed.fragment
-                or "\\" in value or not parsed.path.startswith("/")):
+                or "\\" in value or not parsed.path.startswith("/")
+                or any(seq in value.lower() for seq in ("%0a", "%0d", "%00", "%09"))):
             return False
         if host not in ALLOWED_HOSTS and not any(host.endswith("." + domain) for domain in ALLOWED_HOSTS):
             return False
