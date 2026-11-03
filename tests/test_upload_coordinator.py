@@ -52,7 +52,7 @@ def test_coordinator_completes_successful_send(tmp_path):
     assert path.exists()
 
 
-def test_coordinator_retries_then_fails_without_deleting(tmp_path):
+def test_coordinator_quarantines_ambiguous_send_without_retry(tmp_path):
     root, db_path, task_id, path = pending(tmp_path)
     calls = []
 
@@ -63,38 +63,17 @@ def test_coordinator_retries_then_fails_without_deleting(tmp_path):
 
     bot = Bot()
     assert not call(bot, root, db_path, task_id)
-    with database(db_path) as db:
-        assert db.execute(
-            "SELECT status,upload_attempts FROM tasks WHERE id=?", (task_id,),
-        ).fetchone() == ("upload_pending", 1)
     assert not call(bot, root, db_path, task_id)
-    assert len(calls) == 2
-    with database(db_path) as db:
-        assert db.execute(
-            "SELECT status,upload_attempts FROM tasks WHERE id=?", (task_id,),
-        ).fetchone() == ("failed", 2)
-    assert path.read_bytes() == b"video"
-    assert not call(bot, root, db_path, task_id)
-    assert len(calls) == 2
-
-
-def test_coordinator_respects_retry_delay(tmp_path):
-    root, db_path, task_id, path = pending(tmp_path)
-    calls = []
-
-    class Bot:
-        async def send_video(self, *, chat_id, video, supports_streaming):
-            calls.append(chat_id)
-            raise ConnectionError("unavailable")
-
-    bot = Bot()
-    assert not call(bot, root, db_path, task_id, second_delay=3600)
-    assert not call(bot, root, db_path, task_id, second_delay=3600)
     assert calls == [456]
     with database(db_path) as db:
         assert db.execute(
-            "SELECT status,upload_attempts FROM tasks WHERE id=?", (task_id,),
-        ).fetchone() == ("upload_pending", 1)
+            "SELECT status,upload_attempts FROM tasks WHERE id=?", (task_id,)
+        ).fetchone() == ("uploading", 1)
+        assert db.execute(
+            "SELECT COUNT(*) FROM delivery_reservations WHERE task_id=?",
+            (task_id,)
+        ).fetchone()[0] == 1
+    assert path.read_bytes() == b"video"
 
 
 def test_coordinator_refuses_invalid_file_without_telegram_call(tmp_path):
