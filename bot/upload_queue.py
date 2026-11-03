@@ -1,4 +1,4 @@
-"""Opt-in sequential upload queue; not started by Telegram polling.
+"""Sequential upload queue started by Telegram polling.
 
 Upload attempts and retry deadlines live in SQLite. This worker never deletes
 files and must not run alongside another uploader for the same database.
@@ -36,7 +36,8 @@ async def run_upload_queue(
     while not stop.is_set():
         task_id = next_due_upload(db_path)
         if task_id is not None:
-            delivered = await upload_one_task(
+            try:
+                delivered = await upload_one_task(
                 bot=bot, db_path=db_path, task_id=task_id,
                 configured_download_dir=configured_download_dir,
                 max_bytes=max_bytes, max_attempts=max_attempts,
@@ -44,7 +45,13 @@ async def run_upload_queue(
                 third_attempt_delay_seconds=third_attempt_delay_seconds,
                 project_root=project_root,
                 daily_limit=daily_limit, trusted_users=trusted_users,
-            )
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                import logging
+                logging.exception("Необработанная ошибка очереди отправки задачи %d", task_id)
+                delivered = False
             if delivered:
                 continue
             # Quota exhaustion and failed preflight leave a pending task.
