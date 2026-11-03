@@ -51,7 +51,7 @@ def create_task_directory(root: Path, task_id: str) -> Path:
 def cleanup_task_directory(root: Path, task_dir: Path) -> None:
     """Remove only an owned task directory, never arbitrary neighboring files.
 
-    Refuse symlinks and unexpected hardlinks. This is not safe against an
+    Refuse a symlink as the task directory. This is not safe against an
     attacker concurrently modifying the directory; the directory must be
     private to the bot process.
     """
