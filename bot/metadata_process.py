@@ -34,7 +34,8 @@ async def run_json_subprocess(
     argv: Sequence[str], *, cwd: Path, timeout_seconds: float,
     max_output_bytes: int = 262144,
 ) -> dict:
-    if (not argv or any(type(x) is not str or not x or "\x00" in x for x in argv)
+    if (not isinstance(argv, (list, tuple)) or not argv
+            or any(type(x) is not str or not x or "\x00" in x for x in argv)
             or not isinstance(cwd, Path) or not cwd.is_dir()
             or isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, (int, float))
