@@ -6,6 +6,8 @@ may mean Telegram delivered the file, so retrying can produce duplicates.
 import logging
 from pathlib import Path
 
+from .download_storage import download_root
+from .ready_recovery import valid_ready_file
 from .file_delivery import deliver_pending_file
 from .telegram_sender import send_staged_file
 from .upload_retry import reserve_upload_attempt, schedule_upload_retry
@@ -33,15 +35,34 @@ async def upload_one_task(
     from .storage import database
     if type(daily_limit) is not int or daily_limit <= 0:
         raise ValueError("Некорректный дневной лимит")
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError("Некорректный лимит размера")
     utc_day = datetime.now(timezone.utc).date().isoformat()
     with database(db_path) as db:
         row = db.execute(
-            "SELECT user_id FROM tasks WHERE id=? AND status='upload_pending'",
+            "SELECT user_id,ready_file FROM tasks WHERE id=? AND status='upload_pending'",
             (task_id,),
         ).fetchone()
         if row is None:
             return False
-        user_id = row[0]
+        user_id, stored_path = row
+        root = download_root(configured_download_dir, project_root)
+        if not stored_path or not valid_ready_file(root, task_id, stored_path):
+            db.execute(
+                "UPDATE tasks SET status='failed' WHERE id=? AND status='upload_pending'",
+                (task_id,),
+            )
+            return False
+        try:
+            too_large = Path(stored_path).stat().st_size > max_bytes
+        except OSError:
+            too_large = True
+        if too_large:
+            db.execute(
+                "UPDATE tasks SET status='failed' WHERE id=? AND status='upload_pending'",
+                (task_id,),
+            )
+            return False
         if user_id not in trusted_users:
             used = db.execute(
                 "SELECT COUNT(*) FROM daily_usage WHERE user_id=? AND utc_day=?",
