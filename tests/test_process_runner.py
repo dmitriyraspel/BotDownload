@@ -49,3 +49,26 @@ def test_process_runner_cancel(tmp_path):
 def test_process_runner_rejects_invalid_arguments(tmp_path, argv, timeout):
     with pytest.raises(ProcessExecutionError):
         asyncio.run(run_bounded_process(argv, cwd=tmp_path, timeout_seconds=timeout))
+
+
+@pytest.mark.parametrize("deadline", [float("nan"), float("inf"), -float("inf"), None, "5"])
+def test_process_runner_rejects_nonfinite_or_invalid_timeout(tmp_path, deadline):
+    with pytest.raises(ProcessExecutionError, match="тайм-аут"):
+        asyncio.run(run_bounded_process(
+            [sys.executable, "-c", "print(1)"],
+            cwd=tmp_path, timeout_seconds=deadline,
+        ))
+
+
+def test_process_runner_rejects_nonexistent_executable(tmp_path):
+    with pytest.raises(ProcessExecutionError, match="запустить"):
+        asyncio.run(run_bounded_process(
+            [str(tmp_path / "missing-program")], cwd=tmp_path, timeout_seconds=2,
+        ))
+
+
+def test_process_runner_rejects_invalid_working_directory(tmp_path):
+    with pytest.raises(ProcessExecutionError, match="каталог"):
+        asyncio.run(run_bounded_process(
+            [sys.executable], cwd=tmp_path / "missing", timeout_seconds=2,
+        ))
