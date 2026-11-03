@@ -83,13 +83,13 @@ async def link(message: Message) -> None:
         buttons.append(choices[index:index + 2])
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="preview:cancel")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    card = (f"{info['title']} | {uploader}\\n"
-            f"Дата публикации: {published}\\n"
-            f"Продолжительность: {duration_text}\\n"
-            f"Просмотров: {views_text}\\n\\n"
-            f"Выбранный язык: {info.get('language', 'Язык аудио не определён')}\\n\\n"
+    card = (f"{info['title']} | {uploader}\n"
+            f"Дата публикации: {published}\n"
+            f"Продолжительность: {duration_text}\n"
+            f"Просмотров: {views_text}\n\n"
+            f"Выбранный язык: {info.get('language', 'Язык аудио не определён')}\n\n"
             "Выберите качество:" if len(buttons) > 1 else
-            f"{info['title']}\\nДоступные варианты не определены.")
+            f"{info['title']}\nДоступные варианты не определены.")
     # Do not ask Telegram to fetch arbitrary third-party URLs.
     # Only YouTube's dedicated thumbnail CDN is accepted for this preview.
     thumbnail = info.get("thumbnail", "")
@@ -167,7 +167,7 @@ async def preview_format(callback: CallbackQuery) -> None:
     else:
         note = "Выбор сохранён" if created else "Выбор уже сохранён"
         await callback.answer(note)
-        status = f"⏳ Выбрано: {variant}\\nЗадача №{task_id} зарегистрирована.\\nСкачивание пока отключено."
+        status = f"⏳ Выбрано: {variant}\nЗадача №{task_id} зарегистрирована.\nСкачивание пока отключено."
         if callback.message.photo:
             await callback.message.edit_caption(caption=status)
         else:
