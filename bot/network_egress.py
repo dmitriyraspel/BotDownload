@@ -45,6 +45,6 @@ def systemd_metadata_guard(command: list[str], *, user: str = "tgbot") -> list[s
         "--property=NoNewPrivileges=yes", "--property=PrivateTmp=yes",
         "--property=ProtectSystem=strict", "--property=ProtectHome=yes",
         "--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
-        *[f"--property=IPAddressDeny={cidr}" for cidr in DENIED_CIDRS],
+        "--property=IPAddressDeny=" + " ".join(DENIED_CIDRS),
         "--", *command,
     ]
