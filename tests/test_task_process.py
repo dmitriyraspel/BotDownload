@@ -65,3 +65,42 @@ def test_task_process_rejects_unknown_task(tmp_path):
             [sys.executable, "-c", "pass"], cwd=tmp_path,
             db_path=tmp_path / "bot.sqlite", task_id=99, timeout_seconds=5,
         ))
+
+
+def test_task_process_repeat_cancel_is_idempotent(tmp_path):
+    db_path = tmp_path / "bot.sqlite"
+    task_id = _task(db_path)
+    with database(db_path) as db:
+        assert cancel_task(db, task_id=task_id, user_id=17)
+        assert not cancel_task(db, task_id=task_id, user_id=17)
+    with pytest.raises(TaskWasCancelled):
+        asyncio.run(run_task_process(
+            [sys.executable, "-c", "pass"], cwd=tmp_path,
+            db_path=db_path, task_id=task_id, timeout_seconds=5,
+        ))
+
+
+def test_task_process_reports_crash_without_changing_db_status(tmp_path):
+    from bot.process_runner import ProcessExecutionError
+    db_path = tmp_path / "bot.sqlite"
+    task_id = _task(db_path)
+    with pytest.raises(ProcessExecutionError):
+        asyncio.run(run_task_process(
+            [sys.executable, "-c", "raise SystemExit(7)"],
+            cwd=tmp_path, db_path=db_path, task_id=task_id,
+            timeout_seconds=5, poll_seconds=0.05,
+        ))
+    with database(db_path) as db:
+        assert db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()[0] == "downloading"
+
+
+def test_task_process_rejects_queued_task(tmp_path):
+    db_path = tmp_path / "bot.sqlite"
+    task_id = _task(db_path)
+    with database(db_path) as db:
+        assert change_status(db, task_id, "downloading", "queued")
+    with pytest.raises(ValueError, match="не находится в обработке"):
+        asyncio.run(run_task_process(
+            [sys.executable, "-c", "pass"], cwd=tmp_path,
+            db_path=db_path, task_id=task_id, timeout_seconds=5,
+        ))
