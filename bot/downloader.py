@@ -48,6 +48,7 @@ def build_command(url: str, mode: str, max_bytes: int, output: Path) -> list[str
     command = [
         sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist",
         "--no-progress", "--no-warnings", "--no-overwrites",
+        "--no-config-locations", "--no-plugin-dirs",
         "--max-filesize", str(max_bytes), "--socket-timeout", "10",
         "--retries", "0", "--extractor-retries", "0",
         "--output", str(output / "%(id)s.%(ext)s"),
