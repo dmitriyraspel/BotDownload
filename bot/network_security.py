@@ -73,7 +73,9 @@ def validate_redirect_chain(urls: list[str], *, allowed_hosts: set[str] | None =
     This policy does not perform HTTP requests or pin IPs. A future transport
     must enforce the policy on actual socket connections.
     """
-    if not urls or len(urls) > max_redirects + 1:
+    if (type(max_redirects) is not int or not 0 <= max_redirects <= 20
+            or not isinstance(urls, (list, tuple)) or not urls
+            or len(urls) > max_redirects + 1):
         raise UnsafeNetworkTarget("Недопустимое число перенаправлений")
     return [
         validate_public_https_target(url, allowed_hosts=allowed_hosts)
