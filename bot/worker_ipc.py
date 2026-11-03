@@ -11,6 +11,7 @@ from pathlib import Path
 import socket
 import struct
 import stat
+import sqlite3
 
 
 class WorkerProtocolError(ValueError):
@@ -36,11 +37,39 @@ def parse_request(raw: bytes) -> dict:
         request = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_json_pairs)
     except (UnicodeError, ValueError) as exc:
         raise WorkerProtocolError("Некорректный JSON") from exc
-    if (not isinstance(request, dict) or set(request) != {"op", "version"}
-            or request.get("version") != 1 or type(request.get("version")) is not int
-            or request.get("op") != "ping"):
+    if (not isinstance(request, dict)
+            or type(request.get("version")) is not int
+            or request.get("version") != 1
+            or not (
+                (set(request) == {"op", "version"} and request.get("op") == "ping")
+                or (set(request) == {"op", "version", "task_id"}
+                    and request.get("op") == "task_status"
+                    and type(request.get("task_id")) is int
+                    and 0 < request["task_id"] <= 9223372036854775807)
+            )):
         raise WorkerProtocolError("Операция не разрешена")
     return request
+
+
+def task_status(db_path: Path, task_id: int) -> str:
+    """Read a task from SQLite without executing it or mutating queue state."""
+    if (not isinstance(db_path, Path) or not db_path.is_absolute()
+            or type(task_id) is not int or task_id <= 0):
+        return "unavailable"
+    try:
+        from urllib.parse import quote
+        uri = "file:" + quote(str(db_path), safe="/") + "?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=1) as db:
+            db.execute("PRAGMA query_only=ON")
+            row = db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            return "missing"
+        return row[0] if row[0] in (
+            "queued", "downloading", "processing", "upload_pending",
+            "uploading", "completed", "failed", "cancelled",
+        ) else "unavailable"
+    except (sqlite3.Error, OSError):
+        return "unavailable"
 
 
 def peer_uid(writer: asyncio.StreamWriter) -> int:
@@ -58,7 +87,7 @@ def peer_uid(writer: asyncio.StreamWriter) -> int:
 
 async def handle_connection(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, *,
-    allowed_uid: int,
+    allowed_uid: int, db_path: Path | None = None,
 ) -> None:
     try:
         if type(allowed_uid) is not int or allowed_uid < 0:
@@ -68,8 +97,15 @@ async def handle_connection(
         raw = await asyncio.wait_for(reader.readline(), timeout=3)
         if not raw.endswith(b"\n") or len(raw) > MAX_MESSAGE + 1:
             raise WorkerProtocolError("Недопустимая длина сообщения")
-        parse_request(raw[:-1])
-        response = {"version": 1, "status": "ready", "downloads_enabled": False}
+        request = parse_request(raw[:-1])
+        if request["op"] == "ping":
+            response = {"version": 1, "status": "ready", "downloads_enabled": False}
+        else:
+            response = {
+                "version": 1, "status": "ok",
+                "task_status": task_status(db_path, request["task_id"]),
+                "downloads_enabled": False,
+            }
     except (WorkerProtocolError, asyncio.TimeoutError, asyncio.LimitOverrunError, ValueError):
         response = {"version": 1, "status": "rejected"}
     try:
@@ -85,7 +121,7 @@ async def handle_connection(
             pass
 
 
-async def serve(socket_path: Path, *, allowed_uid: int) -> None:
+async def serve(socket_path: Path, *, allowed_uid: int, db_path: Path | None = None) -> None:
     """Serve on a socket path owned by a root-created, private runtime dir."""
     if (not isinstance(socket_path, Path) or not socket_path.is_absolute()
             or type(allowed_uid) is not int or allowed_uid < 0):
@@ -102,7 +138,7 @@ async def serve(socket_path: Path, *, allowed_uid: int) -> None:
     if socket_path.exists() or socket_path.is_symlink():
         raise WorkerProtocolError("Сокет уже существует")
     server = await asyncio.start_unix_server(
-        lambda r, w: handle_connection(r, w, allowed_uid=allowed_uid),
+        lambda r, w: handle_connection(r, w, allowed_uid=allowed_uid, db_path=db_path),
         path=str(socket_path), limit=MAX_MESSAGE + 2,
     )
     try:
