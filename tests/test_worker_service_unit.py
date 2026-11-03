@@ -26,5 +26,5 @@ def test_worker_unit_has_bounded_resources_and_private_runtime():
     assert "MemoryMax=256M" in text
     assert "TasksMax=16" in text
     assert "RuntimeDirectory=botdownload-worker" in text
-    assert "RuntimeDirectoryMode=0750" in text
+    assert "RuntimeDirectoryMode=0700" in text
     assert "ProtectSystem=strict" in text
