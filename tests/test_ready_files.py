@@ -41,3 +41,39 @@ def test_stage_ready_file_rejects_non_workspace(tmp_path):
     (workspace / "video.mp4").write_bytes(b"video")
     with pytest.raises(DownloadStorageError):
         stage_ready_file(tmp_path, workspace, "video.mp4", "10")
+
+
+def test_stage_rejects_workspace_belonging_to_another_task(tmp_path):
+    workspace = create_task_directory(tmp_path, "11")
+    (workspace / "video.mp4").write_bytes(b"video")
+    with pytest.raises(DownloadStorageError):
+        stage_ready_file(tmp_path, workspace, "video.mp4", "12")
+    assert (workspace / "video.mp4").read_bytes() == b"video"
+
+
+def test_stage_rejects_world_accessible_workspace(tmp_path):
+    workspace = create_task_directory(tmp_path, "13")
+    (workspace / "video.mp4").write_bytes(b"video")
+    workspace.chmod(0o755)
+    with pytest.raises(DownloadStorageError):
+        stage_ready_file(tmp_path, workspace, "video.mp4", "13")
+
+
+@pytest.mark.parametrize("filename", [".hidden.mp4", "empty.mp4"])
+def test_stage_rejects_hidden_and_empty_files(tmp_path, filename):
+    workspace = create_task_directory(tmp_path, "14")
+    (workspace / filename).touch()
+    with pytest.raises(DownloadStorageError):
+        stage_ready_file(tmp_path, workspace, filename, "14")
+    assert (workspace / filename).exists()
+
+
+def test_stage_rejects_hardlinked_file(tmp_path):
+    import os
+    workspace = create_task_directory(tmp_path, "15")
+    outside = tmp_path / "outside.mp4"
+    outside.write_bytes(b"video")
+    os.link(outside, workspace / "video.mp4")
+    with pytest.raises(DownloadStorageError):
+        stage_ready_file(tmp_path, workspace, "video.mp4", "15")
+    assert outside.read_bytes() == b"video"
