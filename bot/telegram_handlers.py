@@ -1,42 +1,39 @@
-"""Telegram stage 2: basic commands and conservative link intake."""
+"""Telegram commands and conservative link intake."""
+import asyncio
 from urllib.parse import urlsplit
-import ipaddress
-import socket
 
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
 
 router = Router()
-
-ALLOWED_HOSTS = {
-    "youtube.com", "youtu.be", "instagram.com", "tiktok.com",
-}
+ALLOWED_HOSTS = {"youtube.com", "youtu.be", "instagram.com", "tiktok.com"}
 
 
 def validate_media_url(value: str) -> bool:
-    """Only permit HTTPS links to known media domains; no DNS requests here."""
-    if not isinstance(value, str) or len(value) > 2048 or any(c.isspace() for c in value):
+    """Require HTTPS, a supported host, and a single unambiguous URL."""
+    if not isinstance(value, str) or len(value) > 2048 or any(c.isspace() or ord(c) < 32 for c in value):
         return False
     try:
         parsed = urlsplit(value)
-        host = (parsed.hostname or "").rstrip(".").lower()
-        if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port not in (None, 443):
+        host = (parsed.hostname or "").lower()
+        if (parsed.scheme != "https" or not host or parsed.username or parsed.password
+                or parsed.port not in (None, 443) or parsed.fragment
+                or "\\" in value or not parsed.path.startswith("/")):
             return False
-        if not host or host not in ALLOWED_HOSTS and not any(host.endswith("." + domain) for domain in ALLOWED_HOSTS):
+        if host not in ALLOWED_HOSTS and not any(host.endswith("." + domain) for domain in ALLOWED_HOSTS):
             return False
-        try:
-            ipaddress.ip_address(host)
+        # Disallow non-ASCII domain spellings and unusual URL authorities.
+        if not host.isascii() or "%" in parsed.netloc or "@" in parsed.netloc:
             return False
-        except ValueError:
-            return True
+        return True
     except ValueError:
         return False
 
 
 @router.message(Command("start"))
 async def start(message: Message) -> None:
-    await message.answer("Привет! Отправь HTTPS-ссылку на YouTube, Instagram или TikTok. Загрузка появится на следующем шаге разработки.")
+    await message.answer("Привет! Отправь HTTPS-ссылку на YouTube, Instagram или TikTok для анализа.")
 
 
 @router.message(Command("myid"))
@@ -48,7 +45,21 @@ async def myid(message: Message) -> None:
 @router.message(F.text)
 async def link(message: Message) -> None:
     value = (message.text or "").strip()
-    if validate_media_url(value):
-        await message.answer("Ссылка принята. Анализ и скачивание будут добавлены на следующем шаге.")
-    else:
+    if not validate_media_url(value):
         await message.answer("Отправь одну HTTPS-ссылку на YouTube, Instagram или TikTok.")
+        return
+    from .metadata import AnalysisError, inspect
+    from .config import load_settings
+    settings = load_settings()
+    await message.answer("Анализирую ссылку…")
+    try:
+        info = await inspect(value, timeout=settings.data["timeouts"]["analysis_timeout_seconds"])
+    except AnalysisError as exc:
+        await message.answer(str(exc))
+        return
+    duration = info.get("duration")
+    duration_text = f"{int(duration)} сек." if isinstance(duration, (int, float)) and duration >= 0 else "неизвестна"
+    await message.answer(
+        f"Название: {info['title']}\nДлительность: {duration_text}\n"
+        "Скачивание пока не включено."
+    )
