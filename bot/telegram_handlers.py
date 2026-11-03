@@ -102,23 +102,67 @@ async def link(message: Message) -> None:
                              thumb_url.port in (None, 443))
     except ValueError:
         trusted_thumbnail = False
+    sent = None
     if trusted_thumbnail and len(card) <= 1024:
         try:
-            await message.answer_photo(photo=thumbnail, caption=card, reply_markup=keyboard)
-            return
+            sent = await message.answer_photo(photo=thumbnail, caption=card, reply_markup=keyboard)
         except Exception:
             # Thumbnail failures should not prevent a metadata card.
             pass
-    await message.answer(card, reply_markup=keyboard)
+    if sent is None:
+        sent = await message.answer(card, reply_markup=keyboard)
+    if choices and message.from_user:
+        from pathlib import Path
+        from .storage import database, save_preview
+        with database(Path("data/bot.sqlite")) as db:
+            save_preview(db, chat_id=sent.chat.id, message_id=sent.message_id,
+                         user_id=message.from_user.id, source_url=value,
+                         media_key=f"{info.get('extractor', '')}:{value}",
+                         variants=[button.callback_data.removeprefix("preview:") for button in choices])
 
 
 @router.callback_query(F.data.in_({"preview:480p", "preview:720p", "preview:1080p", "preview:MP3"}))
 async def preview_format(callback: CallbackQuery) -> None:
-    await callback.answer("Формат выбран. Скачивание пока не включено.", show_alert=True)
+    from pathlib import Path
+    from .storage import database, select_preview, create_task
+    if not callback.message:
+        await callback.answer("Карточка недоступна", show_alert=True)
+        return
+    variant = (callback.data or "").removeprefix("preview:")
+    with database(Path("data/bot.sqlite")) as db:
+        selection = select_preview(
+            db, chat_id=callback.message.chat.id, message_id=callback.message.message_id,
+            user_id=callback.from_user.id, variant=variant)
+        if selection is None:
+            task_id = None
+            created = False
+        else:
+            url, media_key = selection
+            task_id, created = create_task(
+                db, user_id=callback.from_user.id, chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                callback_key=f"{callback.message.chat.id}:{callback.message.message_id}:{callback.from_user.id}:{variant}",
+                source_url=url, media_key=media_key, variant=variant)
+    if task_id is None:
+        await callback.answer("Эта кнопка недоступна или карточка отменена", show_alert=True)
+    else:
+        note = "Выбор сохранён" if created else "Выбор уже сохранён"
+        await callback.answer(f"{note}: {variant}, задача №{task_id}. Скачивание пока отключено.", show_alert=True)
 
 
 @router.callback_query(F.data == "preview:cancel")
 async def cancel_preview(callback: CallbackQuery) -> None:
-    if callback.message:
-        await callback.message.edit_reply_markup(reply_markup=None)
+    from pathlib import Path
+    from .storage import database, cancel_preview_record
+    if not callback.message:
+        await callback.answer("Карточка недоступна", show_alert=True)
+        return
+    with database(Path("data/bot.sqlite")) as db:
+        cancelled = cancel_preview_record(
+            db, chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id, user_id=callback.from_user.id)
+    if not cancelled:
+        await callback.answer("Нельзя отменить чужую или уже отменённую карточку", show_alert=True)
+        return
+    await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Выбор отменён")
