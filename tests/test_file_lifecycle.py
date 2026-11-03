@@ -73,3 +73,35 @@ def test_file_lifecycle_bad_output_fails_and_cleans(tmp_path):
     with database(db_path) as db:
         assert db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()[0] == "failed"
     assert not list(root.iterdir())
+
+
+def test_file_lifecycle_processor_error_marks_failed(tmp_path):
+    db_path, root = tmp_path / "db.sqlite", tmp_path / "downloads"
+    root.mkdir()
+    task_id = setup_task(db_path)
+
+    async def processor(workspace, task_id):
+        (workspace / "video.mp4").write_bytes(b"partial")
+        raise RuntimeError("processing failed")
+
+    with pytest.raises(RuntimeError, match="processing failed"):
+        run(db_path, task_id, root, processor)
+    with database(db_path) as db:
+        assert db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()[0] == "failed"
+        assert get_pending_file(db, task_id) is None
+    assert not list(root.iterdir())
+
+
+def test_file_lifecycle_rejects_unclaimed_task(tmp_path):
+    db_path, root = tmp_path / "db.sqlite", tmp_path / "downloads"
+    root.mkdir()
+    task_id = setup_task(db_path)
+    with database(db_path) as db:
+        assert change_status(db, task_id, "downloading", "queued")
+
+    async def processor(workspace, task_id):
+        raise AssertionError("processor must not run")
+
+    with pytest.raises(ValueError, match="не захвачена"):
+        run(db_path, task_id, root, processor)
+    assert not list(root.iterdir())
