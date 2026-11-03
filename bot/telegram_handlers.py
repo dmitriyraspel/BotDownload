@@ -1,13 +1,12 @@
 """Telegram commands and conservative link intake."""
-import asyncio
 from urllib.parse import urlsplit
 
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 router = Router()
-ALLOWED_HOSTS = {"youtube.com", "youtu.be", "instagram.com", "tiktok.com"}
+ALLOWED_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "instagram.com", "www.instagram.com", "tiktok.com", "www.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"}
 
 
 def validate_media_url(value: str) -> bool:
@@ -22,7 +21,7 @@ def validate_media_url(value: str) -> bool:
                 or "\\" in value or not parsed.path.startswith("/")
                 or any(seq in value.lower() for seq in ("%0a", "%0d", "%00", "%09"))):
             return False
-        if host not in ALLOWED_HOSTS and not any(host.endswith("." + domain) for domain in ALLOWED_HOSTS):
+        if host not in ALLOWED_HOSTS:
             return False
         # Disallow non-ASCII domain spellings and unusual URL authorities.
         if not host.isascii() or "%" in parsed.netloc or "@" in parsed.netloc:
@@ -60,7 +59,21 @@ async def link(message: Message) -> None:
         return
     duration = info.get("duration")
     duration_text = f"{int(duration)} сек." if isinstance(duration, (int, float)) and duration >= 0 else "неизвестна"
+    buttons = []
+    if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration > 0:
+        if duration <= settings.data["limits"]["max_video_duration_seconds"]:
+            buttons.append(InlineKeyboardButton(text="🎬 Видео", callback_data="preview:video"))
+        if duration <= settings.data["limits"]["max_audio_duration_seconds"]:
+            buttons.append(InlineKeyboardButton(text="🎵 MP3", callback_data="preview:mp3"))
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
+    note = ("Выбери формат (скачивание пока отключено)." if buttons
+            else "Скачивание недоступно: неизвестная или слишком большая длительность.")
     await message.answer(
-        f"Название: {info['title']}\nДлительность: {duration_text}\n"
-        "Скачивание пока не включено."
+        f"Название: {info['title']}\\nДлительность: {duration_text}\\n{note}",
+        reply_markup=keyboard,
     )
+
+
+@router.callback_query(F.data.in_({"preview:video", "preview:mp3"}))
+async def preview_format(callback: CallbackQuery) -> None:
+    await callback.answer("Формат выбран. Скачивание пока не включено.", show_alert=True)
