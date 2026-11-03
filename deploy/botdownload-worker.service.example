@@ -1,18 +1,18 @@
 [Unit]
-Description=BotDownload offline IPC worker (separate UID; media disabled)
+Description=BotDownload offline IPC worker (single UID; media disabled)
 After=local-fs.target
 
 [Service]
 Type=simple
-User=botdownload-worker
+User=tgbot
 Group=tgbot
 WorkingDirectory=/opt/BotDownload
 ExecStart=/opt/BotDownload/.venv/bin/python -m bot.worker_service
 Environment=BOTDOWNLOAD_CLIENT_USER=tgbot
 Environment=BOTDOWNLOAD_WORKER_SOCKET=/run/botdownload-worker/worker.sock
 RuntimeDirectory=botdownload-worker
-RuntimeDirectoryMode=0750
-UMask=0007
+RuntimeDirectoryMode=0700
+UMask=0077
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 PrivateTmp=yes
