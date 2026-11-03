@@ -49,12 +49,14 @@ async def link(message: Message) -> None:
         await message.answer("Отправь одну HTTPS-ссылку на YouTube, Instagram или TikTok.")
         return
     from .metadata import AnalysisError, inspect
+    from .media_admission import admit_inspect, AdmissionDenied
     from .config import load_settings
     settings = load_settings()
     progress = await message.answer("⏳ Анализирую ссылку…")
     try:
-        info = await inspect(value, timeout=settings.data["timeouts"]["analysis_timeout_seconds"])
-    except AnalysisError as exc:
+        approved = admit_inspect(value)
+        info = await inspect(approved.url, timeout=settings.data["timeouts"]["analysis_timeout_seconds"])
+    except (AnalysisError, AdmissionDenied) as exc:
         await progress.edit_text(f"❌ {exc}")
         return
     from .media_variants import size_label
@@ -130,6 +132,7 @@ async def link(message: Message) -> None:
 async def preview_format(callback: CallbackQuery) -> None:
     from pathlib import Path
     from .storage import database, select_preview, enqueue_task
+    from .media_admission import admit_download, AdmissionDenied
     from .config import load_settings
     if not callback.message:
         await callback.answer("Карточка недоступна", show_alert=True)
@@ -157,6 +160,9 @@ async def preview_format(callback: CallbackQuery) -> None:
                     media_key=media_key,
                     variant=variant,
                 )
+                admit_download(db, task_id=task_id)
+            except AdmissionDenied:
+                task_id, created = None, False
             except OverflowError:
                 task_id, created = None, False
                 queue_full = True
