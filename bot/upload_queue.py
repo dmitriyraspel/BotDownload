@@ -16,6 +16,7 @@ def next_due_upload(db_path: Path) -> int | None:
         row = db.execute(
             """SELECT id FROM tasks
             WHERE status='upload_pending'
+              AND ready_file IS NOT NULL AND ready_file != ''
               AND (next_upload_at IS NULL OR julianday(next_upload_at) <= julianday('now'))
             ORDER BY created_at,id LIMIT 1"""
         ).fetchone()
@@ -34,7 +35,7 @@ async def run_upload_queue(
     while not stop.is_set():
         task_id = next_due_upload(db_path)
         if task_id is not None:
-            await upload_one_task(
+            delivered = await upload_one_task(
                 bot=bot, db_path=db_path, task_id=task_id,
                 configured_download_dir=configured_download_dir,
                 max_bytes=max_bytes, max_attempts=max_attempts,
@@ -42,7 +43,10 @@ async def run_upload_queue(
                 third_attempt_delay_seconds=third_attempt_delay_seconds,
                 project_root=project_root,
             )
-            continue
+            if delivered:
+                continue
+            # Quota exhaustion and failed preflight leave a pending task.
+            # Back off instead of spinning on the same task indefinitely.
         try:
             await asyncio.wait_for(stop.wait(), timeout=idle_seconds)
         except asyncio.TimeoutError:
