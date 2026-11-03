@@ -31,3 +31,19 @@ def test_baseline_failure_never_passes(monkeypatch, capsys):
                         lambda *args, **kwargs: Result())
     assert egress_loopback_probe.main([]) == 2
     assert "INCONCLUSIVE" in capsys.readouterr().out
+
+
+def test_ipv6_child_uses_ipv6_loopback(monkeypatch, capsys):
+    destinations = []
+    class Connection:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return None
+    def connect(destination, timeout):
+        destinations.append((destination, timeout))
+        return Connection()
+    monkeypatch.setattr(socket, "create_connection", connect)
+    assert egress_loopback_probe._connect(12345, ipv6=True) == 0
+    assert destinations == [(("::1", 12345), 2)]
+    assert capsys.readouterr().out.strip() == "CONNECTED"
