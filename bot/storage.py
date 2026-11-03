@@ -192,6 +192,15 @@ def cancel_preview_record(connection: sqlite3.Connection, *, chat_id: int,
     return cursor.rowcount == 1
 
 
+def existing_preview_task(connection: sqlite3.Connection, *, chat_id: int, message_id: int) -> tuple[int, str] | None:
+    """A preview can create only one task, regardless of chosen format."""
+    row = connection.execute(
+        "SELECT id,variant FROM tasks WHERE chat_id=? AND message_id=? ORDER BY id LIMIT 1",
+        (chat_id, message_id),
+    ).fetchone()
+    return (row[0], row[1]) if row else None
+
+
 def enqueue_task(connection: sqlite3.Connection, *, max_pending: int, **kwargs) -> tuple[int, bool]:
     """Queue a task if capacity permits; duplicate callback never uses a slot."""
     if max_pending <= 0:
@@ -205,6 +214,11 @@ def enqueue_task(connection: sqlite3.Connection, *, max_pending: int, **kwargs) 
         if existing[1] != kwargs["user_id"]:
             raise ValueError("Действие принадлежит другому пользователю")
         return existing[0], False
+    existing_card = existing_preview_task(
+        connection, chat_id=kwargs["chat_id"], message_id=kwargs["message_id"]
+    )
+    if existing_card:
+        return existing_card[0], False
     pending = connection.execute(
         "SELECT COUNT(*) FROM tasks WHERE status='queued'"
     ).fetchone()[0]
