@@ -67,3 +67,22 @@ def cleanup_task_directory(root: Path, task_dir: Path) -> None:
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
         raise DownloadStorageError("Каталог задачи не принадлежит процессу")
     shutil.rmtree(task_dir)
+
+
+def require_free_space(root: Path, expected_bytes: int, *, reserve_bytes: int = 512 * 1024 * 1024) -> int:
+    """Check free space on the actual download filesystem before starting work.
+
+    This is a preflight check, not a disk quota: concurrent writers may still
+    exhaust the disk. The download worker must also enforce output size.
+    """
+    if type(expected_bytes) is not int or expected_bytes <= 0:
+        raise DownloadStorageError("Некорректный ожидаемый размер загрузки")
+    if type(reserve_bytes) is not int or reserve_bytes < 0:
+        raise DownloadStorageError("Некорректный резерв свободного места")
+    root = root.resolve(strict=True)
+    if not root.is_dir():
+        raise DownloadStorageError("Каталог загрузок отсутствует")
+    free = shutil.disk_usage(root).free
+    if free < expected_bytes + reserve_bytes:
+        raise DownloadStorageError("Недостаточно свободного места для загрузки")
+    return free
