@@ -89,3 +89,56 @@ def test_coordinator_refuses_invalid_file_without_telegram_call(tmp_path):
         assert db.execute(
             "SELECT status FROM tasks WHERE id=?", (task_id,),
         ).fetchone()[0] == "failed"
+
+
+def test_quota_exhaustion_does_not_consume_attempt(tmp_path):
+    from datetime import datetime, timezone
+    root, db_path, task_id, path = pending(tmp_path)
+    day = datetime.now(timezone.utc).date().isoformat()
+    with database(db_path) as db:
+        db.execute(
+            "INSERT INTO daily_usage(user_id,utc_day,task_id) VALUES (?,?,?)",
+            (3, day, task_id),
+        )
+
+    class Bot:
+        async def send_video(self, **kwargs):
+            raise AssertionError("Quota blocked upload must not contact Telegram")
+
+    assert not asyncio.run(upload_one_task(
+        bot=Bot(), db_path=db_path, task_id=task_id,
+        configured_download_dir=str(root), max_bytes=100,
+        max_attempts=2, second_attempt_delay_seconds=0,
+        third_attempt_delay_seconds=0, daily_limit=1,
+    ))
+    with database(db_path) as db:
+        assert db.execute(
+            "SELECT status,upload_attempts FROM tasks WHERE id=?", (task_id,),
+        ).fetchone() == ("upload_pending", 0)
+    assert path.exists()
+
+
+def test_trusted_user_bypasses_quota_preflight(tmp_path):
+    from datetime import datetime, timezone
+    root, db_path, task_id, path = pending(tmp_path)
+    day = datetime.now(timezone.utc).date().isoformat()
+    with database(db_path) as db:
+        db.execute(
+            "INSERT INTO daily_usage(user_id,utc_day,task_id) VALUES (?,?,?)",
+            (3, day, task_id),
+        )
+
+    class Bot:
+        async def send_video(self, **kwargs):
+            return SimpleNamespace(video=SimpleNamespace(file_id="trusted-file"))
+
+    assert asyncio.run(upload_one_task(
+        bot=Bot(), db_path=db_path, task_id=task_id,
+        configured_download_dir=str(root), max_bytes=100,
+        max_attempts=2, second_attempt_delay_seconds=0,
+        third_attempt_delay_seconds=0, daily_limit=1, trusted_users=(3,),
+    ))
+    with database(db_path) as db:
+        assert db.execute(
+            "SELECT status,upload_attempts FROM tasks WHERE id=?", (task_id,),
+        ).fetchone() == ("completed", 1)
