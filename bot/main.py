@@ -32,7 +32,7 @@ async def run_bot(settings) -> None:
 def main() -> None:
     try:
         settings = load_settings()
-        for executable in ("ffmpeg", "ffprobe", "yt-dlp"):
+        for executable in ("ffmpeg", "ffprobe"):
             if shutil.which(executable) is None:
                 raise ConfigurationError(f"{executable}: исполняемый файл не найден")
         cfg = settings.data["logging"]
