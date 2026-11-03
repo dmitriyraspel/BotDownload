@@ -3,6 +3,7 @@
 Network isolation / SSRF controls are required before enabling this for untrusted links.
 """
 import asyncio
+import stat
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -83,13 +84,19 @@ async def download_to_temporary(url: str, mode: str, duration: object,
             )
         except ProcessExecutionError as exc:
             raise DownloadError("Не удалось скачать или обработать файл") from exc
-        files = [p for p in directory.iterdir() if p.is_file()]
-        if len(files) != 1:
+        # Treat all worker output as untrusted. Path.is_file() follows symlinks,
+        # which could turn a malicious extractor output into an arbitrary read.
+        entries = list(directory.iterdir())
+        if len(entries) != 1:
             raise DownloadError("Неоднозначный результат скачивания")
-        result = files[0]
+        result = entries[0]
+        metadata = result.lstat()
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                or metadata.st_size <= 0):
+            raise DownloadError("Небезопасный результат скачивания")
         if mode == "mp3" and result.suffix.lower() != ".mp3":
             raise DownloadError("Не удалось преобразовать файл в MP3")
-        check_size(result.stat().st_size, max_bytes)
+        check_size(metadata.st_size, max_bytes)
         return temporary, result
     except BaseException:
         temporary.cleanup()
