@@ -36,7 +36,8 @@ async def run_bounded_process(
 
     Caller must enforce resource/network isolation and output limits separately.
     """
-    if not argv or any(type(x) is not str or not x or "\x00" in x for x in argv):
+    if (not isinstance(argv, (list, tuple)) or not argv
+            or any(type(x) is not str or not x or "\x00" in x for x in argv)):
         raise ProcessExecutionError("Недопустимая команда")
     if not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ProcessExecutionError("Недопустимый тайм-аут")
