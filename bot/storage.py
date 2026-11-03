@@ -266,9 +266,25 @@ def claim_next_task(connection: sqlite3.Connection, *, max_wait_minutes: int) ->
 
 def recover_interrupted_tasks(connection: sqlite3.Connection) -> int:
     """Restore interrupted downloads to the queue; preserve upload retries."""
-    cursor = connection.execute(
-        """UPDATE tasks SET status='queued' WHERE status IN ('downloading','processing')"""
-    )
+    # Jobs ever dispatched to the separate worker must not be replayed:
+    # the worker may still be executing after only the bot process restarts.
+    # Lease reconciliation handles these jobs separately, without retrying.
+    lease_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_job_leases'"
+    ).fetchone() is not None
+    if lease_table:
+        cursor = connection.execute(
+            """UPDATE tasks SET status='queued'
+            WHERE status IN ('downloading','processing')
+            AND NOT EXISTS (
+                SELECT 1 FROM worker_job_leases l WHERE l.task_id=tasks.id
+            )"""
+        )
+    else:
+        cursor = connection.execute(
+            """UPDATE tasks SET status='queued'
+            WHERE status IN ('downloading','processing')"""
+        )
     # Upload outcome may be ambiguous after a crash. Do not retry
     # 'uploading' automatically: Telegram may already have delivered it.
     # An operator/reconciliation path must resolve such tasks explicitly.

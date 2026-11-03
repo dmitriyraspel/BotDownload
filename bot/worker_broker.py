@@ -57,5 +57,7 @@ async def revoke_claimed_task(
     This operation cannot remotely cancel an already-running process;
     the IPC protocol currently supports only reservation cancellation.
     """
+    # Revocation is durable. The live worker is not given the plaintext
+    # capability again here, so remote cancellation is not guaranteed.
     with database(db_path) as db:
         return cancel_job(db, task_id)

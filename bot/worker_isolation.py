@@ -8,6 +8,11 @@ from pathlib import Path
 
 REQUIRED = {
     "NoNewPrivileges": "yes",
+    "User": "botdownload-worker",
+    "Group": "tgbot",
+    "RuntimeDirectoryMode": "0750",
+    "UMask": "0007",
+    "Environment": "BOTDOWNLOAD_CLIENT_USER=tgbot",
     "PrivateTmp": "yes",
     "PrivateDevices": "yes",
     "ProtectSystem": "strict",

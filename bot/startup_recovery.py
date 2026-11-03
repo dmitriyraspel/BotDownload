@@ -9,6 +9,7 @@ from pathlib import Path
 from .orphan_inventory import find_orphan_task_directories
 from .ready_recovery import inspect_pending_files
 from .storage import database, recover_interrupted_tasks
+from .worker_recovery import reconcile_worker_leases
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,9 @@ def recover_before_workers(
 
     download_root(configured_download_dir, project_root)
     with database(db_path) as db:
+        # Leased jobs may still be active in a separately running worker.
+        # Reconcile durable lease state first, then requeue only unleased work.
+        reconcile_worker_leases(db)
         requeued = recover_interrupted_tasks(db)
     ready, failed = inspect_pending_files(
         db_path, configured_download_dir, project_root=project_root,

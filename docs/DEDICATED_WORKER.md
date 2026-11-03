@@ -209,3 +209,20 @@ on the bot's private database blindly.
 Production media delivery, automatic worker scheduling, crash-safe
 cancellation across restarts, and public HTTPS egress isolation remain
 separate deployment gates. The systemd unit still denies all IP traffic.
+
+
+## Startup crash-safety (offline dispatcher)
+
+The bot's startup recovery now reconciles existing worker leases before
+requeueing ordinary interrupted tasks. Tasks with a lease are never
+automatically requeued, even when the lease expired or was cancelled: an
+external worker could still be active. Expired or revoked leased tasks
+are marked failed; unexpired leases remain in their existing state pending
+operator review. This is a *fail-closed* guard against duplicate execution,
+not a way to kill worker subprocesses.
+
+The example systemd unit uses a separate `botdownload-worker` UID and
+`tgbot` group, consistent with the installation steps above. Worker data
+access is not granted automatically. In particular, an offline IPC ping
+may succeed while task status/reservation IPC returns `unavailable` until
+an administrator has arranged a read-only SQLite access path.

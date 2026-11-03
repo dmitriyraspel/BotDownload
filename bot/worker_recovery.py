@@ -12,6 +12,10 @@ def reconcile_worker_leases(db: sqlite3.Connection) -> dict[str, int]:
     """
     if not db.in_transaction:
         db.execute("BEGIN IMMEDIATE")
+    if db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_job_leases'"
+    ).fetchone() is None:
+        return {"expired": 0, "revoked": 0, "failed": 0}
     expired = expire_jobs(db)
     db.execute(
         """UPDATE worker_job_leases SET state='cancelled'

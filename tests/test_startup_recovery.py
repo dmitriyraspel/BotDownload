@@ -67,3 +67,39 @@ def test_startup_refuses_missing_storage_before_requeue(tmp_path):
         recover_before_workers(db_path, str(tmp_path / "missing"))
     with database(db_path) as db:
         assert db.execute("SELECT status FROM tasks WHERE id=?", (interrupted,)).fetchone()[0] == "downloading"
+
+
+def test_startup_does_not_requeue_leased_job(tmp_path):
+    from bot.worker_leases import offer_job
+
+    root = tmp_path / "downloads"
+    root.mkdir()
+    path = tmp_path / "db.sqlite"
+    leased = task(path, "leased", "downloading")
+    unleased = task(path, "unleased", "downloading")
+    with database(path) as db:
+        assert offer_job(db, leased)
+
+    report = recover_before_workers(path, str(root))
+    assert report.requeued == 1
+    with database(path) as db:
+        assert db.execute("SELECT status FROM tasks WHERE id=?", (leased,)).fetchone()[0] == "downloading"
+        assert db.execute("SELECT status FROM tasks WHERE id=?", (unleased,)).fetchone()[0] == "queued"
+
+
+def test_startup_expired_lease_fails_instead_of_retry(tmp_path):
+    from bot.worker_leases import offer_job
+
+    root = tmp_path / "downloads"
+    root.mkdir()
+    path = tmp_path / "db.sqlite"
+    leased = task(path, "expired-lease", "downloading")
+    with database(path) as db:
+        assert offer_job(db, leased)
+        db.execute("UPDATE worker_job_leases SET expires_at=? WHERE task_id=?",
+                   ("2000-01-01T00:00:00+00:00", leased))
+    report = recover_before_workers(path, str(root))
+    assert report.requeued == 0
+    with database(path) as db:
+        assert db.execute("SELECT status FROM tasks WHERE id=?", (leased,)).fetchone()[0] == "failed"
+        assert db.execute("SELECT state FROM worker_job_leases WHERE task_id=?", (leased,)).fetchone()[0] == "expired"

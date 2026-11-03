@@ -1,10 +1,10 @@
 [Unit]
-Description=BotDownload offline IPC worker (v1 single UID; media disabled)
+Description=BotDownload offline IPC worker (separate UID; media disabled)
 After=local-fs.target
 
 [Service]
 Type=simple
-User=tgbot
+User=botdownload-worker
 Group=tgbot
 WorkingDirectory=/opt/BotDownload
 ExecStart=/opt/BotDownload/.venv/bin/python -m bot.worker_service

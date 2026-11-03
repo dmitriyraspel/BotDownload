@@ -36,3 +36,19 @@ def test_duplicate_setting_is_rejected():
 def test_network_allow_is_rejected():
     with pytest.raises(IsolationConfigurationError):
         verify_offline_unit(UNIT.read_text(encoding="utf-8") + "\n[Service]\nIPAddressAllow=0.0.0.0/0\n")
+
+
+@pytest.mark.parametrize("replacement", [
+    "User=tgbot",
+    "User=root",
+    "Group=root",
+    "RuntimeDirectoryMode=0777",
+    "UMask=0000",
+    "Environment=BOTDOWNLOAD_CLIENT_USER=root",
+])
+def test_worker_must_be_separate_from_bot(replacement):
+    original = UNIT.read_text(encoding="utf-8")
+    key = replacement.split("=", 1)[0]
+    old = next(line for line in original.splitlines() if line.startswith(key + "="))
+    with pytest.raises(IsolationConfigurationError):
+        verify_offline_unit(original.replace(old, replacement))
