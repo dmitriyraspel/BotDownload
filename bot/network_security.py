@@ -5,6 +5,7 @@ also pin the validated IP and revalidate redirects. Downloads remain disabled.
 """
 import ipaddress
 import socket
+import re
 from urllib.parse import urlsplit
 
 
@@ -33,6 +34,10 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
             or not parts.path.startswith("/")
         ):
             raise UnsafeNetworkTarget("Недопустимый HTTPS-адрес")
+        if (not re.fullmatch(r"[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", host)
+                or any(label.startswith("-") or label.endswith("-") or len(label) > 63
+                       for label in host.split("."))):
+            raise UnsafeNetworkTarget("Недопустимое доменное имя")
         if allowed_hosts is not None and host.lower() not in allowed_hosts:
             raise UnsafeNetworkTarget("Домен не разрешён")
         # Block literal IP hosts; approved providers use DNS hostnames.
@@ -48,7 +53,10 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
         addresses = set()
         for result in results:
             address = ipaddress.ip_address(result[4][0])
-            if not address.is_global:
+            if (not address.is_global or
+                    (isinstance(address, ipaddress.IPv6Address) and
+                     address.ipv4_mapped is not None and
+                     not address.ipv4_mapped.is_global)):
                 raise UnsafeNetworkTarget("Локальный или зарезервированный IP")
             addresses.add(str(address))
         return tuple(sorted(addresses))
