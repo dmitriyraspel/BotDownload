@@ -24,29 +24,27 @@ async def reserve_claimed_task(
         token = offer_job(db, task_id, ttl_seconds=ttl_seconds)
     if token is None:
         return False
-    accepted = False
+    running = False
     try:
         accepted = await reserve_worker_job(socket_path, task_id, token, timeout=timeout)
         if not accepted:
             return False
         with database(db_path) as db:
-            return transition_job(db, task_id, token, "offered", "running")
+            running = transition_job(db, task_id, token, "offered", "running")
+        return running
     finally:
-        # A successful running lease remains reserved. Every other
-        # outcome is revoked even if the IPC response was lost.
-        with database(db_path) as db:
-            row = db.execute(
-                "SELECT state FROM worker_job_leases WHERE task_id=?", (task_id,)
-            ).fetchone()
-            running = row is not None and row[0] == "running"
-            if not running:
-                cancel_job(db, task_id)
+        # Never leave an offered capability alive after an ambiguous result.
         if not running:
+            with database(db_path) as db:
+                cancel_job(db, task_id)
             try:
-                await asyncio.shield(
-                    cancel_worker_reservation(socket_path, task_id, token, timeout=timeout)
+                await asyncio.wait_for(
+                    asyncio.shield(cancel_worker_reservation(
+                        socket_path, task_id, token, timeout=timeout
+                    )), timeout=timeout + 0.5
                 )
-            except (WorkerProtocolError, OSError, asyncio.CancelledError):
+            except (WorkerProtocolError, OSError, asyncio.CancelledError,
+                    asyncio.TimeoutError):
                 pass
 
 
