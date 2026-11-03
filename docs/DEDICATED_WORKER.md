@@ -164,3 +164,23 @@ redirects and DNS rebinding. No DNS/provider-specific bypass or
 unrestricted `IPAddressAllow` has been introduced. Until real
 isolation and integration tests pass on the target VPS, the worker
 must continue reporting `downloads_enabled=false`.
+
+
+## Broker-side reservation orchestration
+
+`bot.worker_broker.reserve_claimed_task` now combines the durable
+SQLite offer, worker IPC acknowledgement and compare-and-swap transition
+to `running`. A rejected or ambiguous reservation is revoked in SQLite
+before a best-effort IPC cancellation. A claimed task is never
+automatically retried after an uncertain IPC outcome.
+
+`revoke_claimed_task` revokes the durable capability. **This does not
+terminate a subprocess** and does not yet notify the live worker:
+the current worker supports only reservation cancellation. These broker
+helpers are deliberately not connected to the Telegram polling loop.
+
+**Deployment gate:** media execution and external networking remain
+disabled. Do not enable downloading based on static unit checks alone.
+The remaining work includes an authenticated start/cancel protocol,
+worker-owned private job directories, process and resource isolation,
+result transfer, and live public-HTTPS/SSRF tests on the target VPS.
