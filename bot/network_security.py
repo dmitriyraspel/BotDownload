@@ -52,7 +52,19 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
             raise UnsafeNetworkTarget("DNS не вернул адреса")
         addresses = set()
         for result in results:
+            # Reject malformed resolver records instead of silently trusting
+            # unexpected families, socket types, or address structures.
+            if (not isinstance(result, tuple) or len(result) != 5
+                    or result[0] not in (socket.AF_INET, socket.AF_INET6)
+                    or result[1] != socket.SOCK_STREAM
+                    or not isinstance(result[4], tuple)
+                    or len(result[4]) < 2
+                    or not isinstance(result[4][0], str)):
+                raise UnsafeNetworkTarget("Некорректный ответ DNS")
             address = ipaddress.ip_address(result[4][0])
+            if ((result[0] == socket.AF_INET) !=
+                    isinstance(address, ipaddress.IPv4Address)):
+                raise UnsafeNetworkTarget("Несоответствие семейства IP")
             if (not address.is_global or
                     (isinstance(address, ipaddress.IPv6Address) and
                      address.ipv4_mapped is not None and
