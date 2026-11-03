@@ -48,3 +48,9 @@ def test_invalid_duration_limit_rejected(limit):
 def test_invalid_size_limit_rejected(limit):
     with pytest.raises(DownloadError):
         check_size(100, limit)
+
+
+@pytest.mark.parametrize("limit", [True, 1.5, 0, -1])
+def test_build_command_rejects_invalid_size_limit(limit):
+    with pytest.raises(DownloadError, match="лимит"):
+        build_command("https://youtu.be/abc", "mp3", limit, Path("tmp"))
