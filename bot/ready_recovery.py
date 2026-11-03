@@ -32,6 +32,7 @@ def valid_ready_file(root: Path, task_id: int, stored_path: str) -> bool:
         return (
             stat.S_ISDIR(directory.st_mode)
             and directory.st_uid == os.getuid()
+            and not (directory.st_mode & 0o077)
             and stat.S_ISREG(file_stat.st_mode)
             and file_stat.st_uid == os.getuid()
             and file_stat.st_nlink == 1
