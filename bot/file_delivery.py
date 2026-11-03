@@ -9,7 +9,8 @@ from pathlib import Path
 
 from .download_storage import download_root
 from .ready_recovery import valid_ready_file
-from .storage import change_status, database, record_delivery
+from .storage import (change_status, database, claim_upload_task,
+                      complete_reserved_delivery)
 
 FileSender = Callable[[int, Path], Awaitable[str]]
 
@@ -18,6 +19,8 @@ async def deliver_pending_file(
     *, db_path: Path, task_id: int, configured_download_dir: str,
     sender: FileSender, max_bytes: int,
     project_root: Path = Path("."),
+    daily_limit: int = 3,
+    trusted_users: tuple[int, ...] = (),
 ) -> bool:
     """Send a registered file once. False means not delivered.
 
@@ -42,7 +45,10 @@ async def deliver_pending_file(
         if path.stat().st_size > max_bytes:
             change_status(db, task_id, "upload_pending", "failed")
             return False
-        if not change_status(db, task_id, "upload_pending", "uploading"):
+        utc_day = datetime.now(timezone.utc).date().isoformat()
+        if not claim_upload_task(db, task_id=task_id, utc_day=utc_day,
+                                 daily_limit=daily_limit,
+                                 trusted_users=trusted_users):
             return False
 
     try:
@@ -50,12 +56,11 @@ async def deliver_pending_file(
         if not isinstance(telegram_file_id, str) or not telegram_file_id.strip():
             raise ValueError("Отправитель не вернул Telegram file_id")
     except Exception:
-        with database(db_path) as db:
-            change_status(db, task_id, "uploading", "upload_pending")
+        # Telegram may have accepted the message before the connection failed.
+        # Keep the reservation and quarantine the ambiguous task.
         raise
 
     with database(db_path) as db:
-        return record_delivery(
-            db, task_id, telegram_file_id,
-            datetime.now(timezone.utc).date().isoformat(), cache_hit=False,
+        return complete_reserved_delivery(
+            db, task_id=task_id, telegram_file_id=telegram_file_id,
         )
