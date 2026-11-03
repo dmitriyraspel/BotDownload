@@ -12,6 +12,7 @@ import socket
 import struct
 import stat
 import sqlite3
+from contextlib import closing
 
 
 class WorkerProtocolError(ValueError):
@@ -59,7 +60,7 @@ def task_status(db_path: Path, task_id: int) -> str:
     try:
         from urllib.parse import quote
         uri = "file:" + quote(str(db_path), safe="/") + "?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=1) as db:
+        with closing(sqlite3.connect(uri, uri=True, timeout=1)) as db:
             db.execute("PRAGMA query_only=ON")
             row = db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
         if row is None:
