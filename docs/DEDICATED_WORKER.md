@@ -76,3 +76,22 @@ Cancellation, retries, task claiming and media execution are deliberately
 a running job; no download is started. This avoids granting the worker
 unnecessary database write privileges before the full job lifecycle and
 network confinement are reviewed.
+
+
+## Broker lease lifecycle (not wired to execution)
+
+`bot.worker_leases` now implements a **bot-side** durable lease state
+machine for future job dispatch. A trusted broker can offer an already
+claimed `downloading` task once, receiving a random 256-bit token.
+Only its SHA-256 digest is persisted in `worker_job_leases`. State
+transitions use SQLite conditional updates and require a matching token,
+unexpired lease and still-active task. Explicit cancellation revokes
+the lease; expiry marks abandoned leases without automatically retrying.
+
+This is a **foundation**, not a running job dispatcher. Tokens are not
+yet transmitted over IPC, the system worker does not claim tasks,
+process files, or terminate subprocesses, and no automatic recovery
+of lease-owned jobs is installed. In particular, lease expiry is
+not a substitute for killing a running process. The separate worker
+still denies all IP traffic and cannot download media. Do not grant
+the worker write access to the bot's database.
