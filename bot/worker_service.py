@@ -21,8 +21,10 @@ def main() -> None:
     socket_path = Path(os.environ.get(
         "BOTDOWNLOAD_WORKER_SOCKET", "/run/botdownload-worker/worker.sock",
     ))
+    db_value = os.environ.get("BOTDOWNLOAD_WORKER_DB", "")
+    db_path = Path(db_value) if db_value else None
     try:
-        asyncio.run(serve(socket_path, allowed_uid=allowed_uid))
+        asyncio.run(serve(socket_path, allowed_uid=allowed_uid, db_path=db_path))
     except (OSError, ValueError) as exc:
         print(f"Worker не запущен: {exc}", file=sys.stderr)
         raise SystemExit(1) from None
