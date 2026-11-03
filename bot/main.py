@@ -13,6 +13,7 @@ from aiogram.client.telegram import TelegramAPIServer
 from .config import ConfigurationError, load_settings
 from .database import initialize
 from .telegram_handlers import router
+from .startup_recovery import recover_before_workers
 
 
 async def run_bot(settings) -> None:
@@ -45,7 +46,19 @@ def main() -> None:
             ],
             format="%(asctime)s %(levelname)s %(message)s",
         )
-        initialize(Path("data/bot.sqlite"))
+        db_path = Path("data/bot.sqlite")
+        initialize(db_path)
+        recovery = recover_before_workers(
+            db_path, settings.data["storage"]["download_dir"],
+        )
+        logging.info(
+            "Восстановление: повторно в очереди %d, готовых файлов %d, "
+            "недоступных файлов %d, незарегистрированных каталогов %d",
+            recovery.requeued, recovery.ready_files,
+            recovery.missing_or_unsafe_files, len(recovery.orphan_directories),
+        )
+        for orphan in recovery.orphan_directories:
+            logging.warning("Незарегистрированный каталог (не удалён): %s", orphan)
         logging.info("Запускается Telegram polling (режим %s)", settings.data["telegram"]["api_mode"])
         asyncio.run(run_bot(settings))
     except (ConfigurationError, OSError, RuntimeError) as exc:
