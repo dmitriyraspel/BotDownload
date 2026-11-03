@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 from collections.abc import Sequence
 
 
@@ -67,3 +68,19 @@ async def run_json_subprocess(
         _kill_group(process)
         await asyncio.shield(process.wait())
         raise
+
+
+async def inspect_in_subprocess(url: str, *, timeout_seconds: float) -> dict:
+    """Process-managed inspection; NOT safe for untrusted URLs until egress is confined."""
+    from .network_security import validate_public_https_target
+    from .telegram_handlers import ALLOWED_HOSTS, validate_media_url
+
+    if not validate_media_url(url):
+        raise MetadataProcessError("Недопустимая ссылка")
+    # Defense in depth only: DNS results are not pinned to yt-dlp sockets.
+    await asyncio.to_thread(validate_public_https_target, url, allowed_hosts=ALLOWED_HOSTS)
+    project_root = Path(__file__).resolve().parent.parent
+    return await run_json_subprocess(
+        [sys.executable, "-m", "bot.metadata_worker", url],
+        cwd=project_root, timeout_seconds=timeout_seconds,
+    )
