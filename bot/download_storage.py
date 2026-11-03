@@ -15,6 +15,7 @@ class DownloadStorageError(Exception):
 
 
 _TASK_ID = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
+_TASK_DIRECTORY = re.compile(r"task-[A-Za-z0-9_-]{1,80}-[0-9a-f]{32}\Z")
 
 
 def download_root(configured_path: str, project_root: Path = Path(".")) -> Path:
@@ -56,7 +57,7 @@ def cleanup_task_directory(root: Path, task_dir: Path) -> None:
     private to the bot process.
     """
     root = root.resolve(strict=True)
-    if task_dir.parent != root or not task_dir.name.startswith("task-"):
+    if task_dir.parent != root or _TASK_DIRECTORY.fullmatch(task_dir.name) is None:
         raise DownloadStorageError("Каталог задачи находится вне хранилища")
     if task_dir.is_symlink():
         raise DownloadStorageError("Символическая ссылка вместо каталога задачи")
@@ -64,7 +65,8 @@ def cleanup_task_directory(root: Path, task_dir: Path) -> None:
         st = task_dir.lstat()
     except FileNotFoundError:
         return
-    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+    if (not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid()
+            or st.st_mode & 0o077):
         raise DownloadStorageError("Каталог задачи не принадлежит процессу")
     shutil.rmtree(task_dir)
 
