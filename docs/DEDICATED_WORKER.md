@@ -95,3 +95,28 @@ of lease-owned jobs is installed. In particular, lease expiry is
 not a substitute for killing a running process. The separate worker
 still denies all IP traffic and cannot download media. Do not grant
 the worker write access to the bot's database.
+
+
+## IPC reservation handshake (implemented, execution disabled)
+
+The trusted broker can call `bot.worker_dispatch.reserve_worker_job`
+with a numeric task ID and an opaque lease token. The worker checks the
+token against the SHA-256 digest, the unexpired `offered` lease and the
+`downloading` task state using **read-only** SQLite access. It accepts
+at most one reservation at a time; duplicate requests and unknown tokens
+are rejected. `cancel_worker_reservation` revokes the matching
+in-memory reservation. The broker can separately use
+`worker_leases.transition_job` and `cancel_job` to update durable state.
+
+**Important limitations:** This is a non-executing handshake only.
+No Telegram handler or queue worker dispatches jobs automatically.
+The worker does not download, create output files, or launch processes.
+A successful reserve response does not mean media work started or
+completed. Cancellation clears an in-memory reservation only, not a
+running subprocess. The broker must persist the corresponding lease
+transition; an IPC acknowledgement alone is not a durable state
+transition. On worker restart, local reservations are lost and the
+broker must reconcile durable leases before any future execution.
+
+The systemd example continues to block all IP networking. Do not
+interpret these IPC tests as proof of egress isolation.
