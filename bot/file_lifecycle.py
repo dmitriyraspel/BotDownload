@@ -74,6 +74,6 @@ async def prepare_claimed_file_task(
                 row = db.execute(
                     "SELECT ready_file,status FROM tasks WHERE id=?", (task_id,)
                 ).fetchone()
-            if row is None or row[0] != str(staged) or row[1] != "upload_pending":
+            if row is None or row[0] != str(staged):
                 root = download_root(configured_download_dir, project_root)
                 cleanup_task_directory(root, staged.parent)
