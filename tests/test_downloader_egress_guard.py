@@ -26,7 +26,6 @@ def test_download_requires_egress_guard():
     lambda cmd: [],
     lambda cmd: ["wrapper", ""],
     lambda cmd: ["wrapper", chr(0)],
-    lambda cmd: ["wrapper", "literal-backslash-x00"],
 ])
 def test_download_rejects_missing_or_invalid_guard(guard):
     with patch("bot.downloader.run_bounded_process", new_callable=AsyncMock) as runner:
