@@ -32,6 +32,7 @@ def test_download_uses_bounded_process_runner(monkeypatch):
     ))
     try:
         assert result.read_bytes() == b"audio"
+        assert result.stat().st_mode & 0o777 == 0o600
         assert len(seen) == 1
         assert seen[0][2] == 5
         assert seen[0][1] == result.parent
@@ -110,3 +111,24 @@ def test_download_rejects_untrusted_worker_artifacts(monkeypatch, tmp_path, arti
     assert len(workspaces) == 1
     assert not workspaces[0].exists()
     assert outside.read_bytes() == b"private-data"
+
+
+def test_download_normalizes_permissive_output_permissions(monkeypatch):
+    async def fake_runner(argv, *, cwd, timeout_seconds):
+        result = cwd / "result.mp3"
+        result.write_bytes(b"audio")
+        result.chmod(0o666)
+
+    monkeypatch.setattr(downloader, "run_bounded_process", fake_runner)
+    monkeypatch.setattr(
+        downloader, "build_command", lambda url, mode, max_bytes, output: ["fake"]
+    )
+    temporary, result = asyncio.run(downloader.download_to_temporary(
+        "https://example.org/video", "mp3", duration=20,
+        max_duration_seconds=60, max_bytes=100,
+        timeout_seconds=5, network_guard=fake_egress_guard,
+    ))
+    try:
+        assert result.stat().st_mode & 0o777 == 0o600
+    finally:
+        temporary.cleanup()
