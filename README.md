@@ -45,3 +45,12 @@ Debian 13:
 The bot automatically configures yt-dlp to use the local Deno binary when present. Supported installer targets: Windows x86_64, Linux x86_64/aarch64. Downloads require HTTPS access to GitHub releases. The installer currently trusts the official HTTPS release; checksum/signature verification is not yet implemented. Do not run downloaded binaries from untrusted sources.
 
 On Windows, `config.yaml` can use `telegram.api_mode: cloud`. Keep the bot token and optional `ADMIN_TELEGRAM_ID` in local `.env`, never commit secrets.
+
+## Download engine (not enabled in Telegram yet)
+
+`bot/downloader.py` prepares video/MP3 downloads with duration and size
+checks, subprocess argument lists (no shell), timeouts and temporary-file cleanup.
+The Telegram handler intentionally still provides metadata only. Before enabling
+downloads from arbitrary users, implement and test network isolation against
+SSRF (including redirects and extractor-internal requests), enforce quotas and
+upload limits, and test the complete flow on Windows and Debian.
