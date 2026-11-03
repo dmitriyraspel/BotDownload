@@ -43,3 +43,13 @@ HTTPS and legitimate DNS while blocking internal and metadata networks,
 including redirects and DNS rebinding. The service's current all-network
 deny must not be relaxed until live negative and positive checks pass.
 The Telegram bot and its existing download queue remain disabled.
+
+
+## IPC hardening
+
+The worker rejects duplicate JSON keys, unknown fields, unrecognized
+operations, malformed frames, and oversized requests. The socket runtime
+directory must be owned by the worker process and must not be
+world-writable or a symlink. The client uses a finite positive timeout
+and treats missing or malformed responses as failure. These are
+defense-in-depth checks; the IPC protocol still exposes only ping.
