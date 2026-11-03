@@ -319,3 +319,48 @@ def get_pending_file(connection: sqlite3.Connection, task_id: int) -> str | None
         (task_id,),
     ).fetchone()
     return row[0] if row else None
+
+
+
+def get_task(connection: sqlite3.Connection, task_id: int) -> dict | None:
+    """Read the persisted work item without exposing arbitrary SQL to workers."""
+    if type(task_id) is not int or task_id <= 0:
+        return None
+    connection.row_factory = sqlite3.Row
+    try:
+        row = connection.execute(
+            """SELECT id,user_id,chat_id,message_id,source_url,media_key,
+                      variant,status,created_at,download_attempts,
+                      upload_attempts,ready_file,telegram_file_id
+               FROM tasks WHERE id=?""", (task_id,)
+        ).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        connection.row_factory = None
+
+
+def count_daily_deliveries(connection: sqlite3.Connection, *,
+                           user_id: int, utc_day: str) -> int:
+    """Count charged successful deliveries, excluding cache hits."""
+    if type(user_id) is not int or user_id <= 0:
+        raise ValueError("Некорректный Telegram ID")
+    from datetime import date
+    try:
+        if date.fromisoformat(utc_day).isoformat() != utc_day:
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Некорректная UTC-дата") from exc
+    return connection.execute(
+        "SELECT COUNT(*) FROM daily_usage WHERE user_id=? AND utc_day=?",
+        (user_id, utc_day)
+    ).fetchone()[0]
+
+
+def quota_available(connection: sqlite3.Connection, *, user_id: int,
+                    utc_day: str, daily_limit: int,
+                    trusted_users: tuple[int, ...] | list[int] = ()) -> bool:
+    """A preflight hint; the delivery path must recheck quota atomically."""
+    if type(daily_limit) is not int or daily_limit <= 0:
+        raise ValueError("Некорректный дневной лимит")
+    used = count_daily_deliveries(connection, user_id=user_id, utc_day=utc_day)
+    return user_id in trusted_users or used < daily_limit
