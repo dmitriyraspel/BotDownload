@@ -144,3 +144,23 @@ These modules are offline building blocks. They do not establish
 filesystem, cgroup or network confinement of arbitrary media processes,
 and they do not yet deliver files to Telegram. The live worker remains
 non-executing and `downloads_enabled=false`.
+
+
+## Network isolation gate (offline mode only)
+
+`bot.worker_isolation.verify_offline_unit` statically checks that the
+example systemd unit preserves the strict **no-IP-network** policy and
+other mandatory sandbox settings. Tests reject several relaxed variants.
+This is not a live check of systemd's effective settings or of kernel
+packet filtering. A systemd drop-in can override the unit; operators
+must inspect `systemctl cat botdownload-worker.service` and the
+effective properties before deployment.
+
+**Network-capable execution remains disabled.** A usable downloader
+needs a separate, independently tested egress design that allows
+legitimate public HTTPS and resolver traffic while denying loopback,
+RFC1918, link-local, metadata services, IPv6 nonpublic addresses,
+redirects and DNS rebinding. No DNS/provider-specific bypass or
+unrestricted `IPAddressAllow` has been introduced. Until real
+isolation and integration tests pass on the target VPS, the worker
+must continue reporting `downloads_enabled=false`.
