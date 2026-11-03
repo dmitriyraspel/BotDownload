@@ -34,6 +34,9 @@ def _extract(url: str) -> dict:
     return {
         "title": str(info.get("title") or "Без названия")[:200],
         "duration": info.get("duration"),
+        "uploader": str(info.get("uploader") or info.get("channel") or "")[:100],
+        "upload_date": str(info.get("upload_date") or ""),
+        "view_count": info.get("view_count"),
         "extractor": str(info.get("extractor_key") or ""),
         "thumbnail": str(info.get("thumbnail") or ""),
         "language": selected_language(info),
