@@ -95,8 +95,11 @@ async def inspect_in_subprocess(
     await asyncio.to_thread(validate_public_https_target, url, allowed_hosts=ALLOWED_HOSTS)
     project_root = Path(__file__).resolve().parent.parent
     command = network_guard([sys.executable, "-m", "bot.metadata_worker", url])
-    if not isinstance(command, (list, tuple)) or not command:
-        raise MetadataProcessError("Политика изоляции не вернула команду")
+    original_command = [sys.executable, "-m", "bot.metadata_worker", url]
+    if (not isinstance(command, (list, tuple)) or not command
+            or any(type(arg) is not str or not arg or "\x00" in arg for arg in command)
+            or list(command) == original_command):
+        raise MetadataProcessError("Не применена изоляция сетевых соединений")
     return await run_json_subprocess(
         command,
         cwd=project_root, timeout_seconds=timeout_seconds,
