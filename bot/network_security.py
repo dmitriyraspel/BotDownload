@@ -19,7 +19,7 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
     DNS here and reconnecting by hostname would be vulnerable to DNS rebinding.
     """
     if not isinstance(url, str) or len(url) > 2048 or any(
-        ord(ch) < 33 or ch == "\\x7f" for ch in url
+        ord(ch) < 33 or ord(ch) == 127 for ch in url
     ):
         raise UnsafeNetworkTarget("Некорректный URL")
     try:
@@ -29,7 +29,7 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
             parts.scheme != "https" or not host or not host.isascii()
             or parts.username or parts.password or parts.fragment
             or parts.port not in (None, 443)
-            or "\\\\" in url or "%" in parts.netloc or "@" in parts.netloc
+            or chr(92) in url or "%" in parts.netloc or "@" in parts.netloc
             or not parts.path.startswith("/")
         ):
             raise UnsafeNetworkTarget("Недопустимый HTTPS-адрес")
@@ -56,3 +56,18 @@ def validate_public_https_target(url: str, *, allowed_hosts: set[str] | None = N
         if isinstance(exc, UnsafeNetworkTarget):
             raise
         raise UnsafeNetworkTarget("Невозможно безопасно проверить адрес") from exc
+
+
+def validate_redirect_chain(urls: list[str], *, allowed_hosts: set[str] | None = None,
+                            max_redirects: int = 5) -> list[tuple[str, ...]]:
+    """Validate every hop; do not automatically trust redirect destinations.
+
+    This policy does not perform HTTP requests or pin IPs. A future transport
+    must enforce the policy on actual socket connections.
+    """
+    if not urls or len(urls) > max_redirects + 1:
+        raise UnsafeNetworkTarget("Недопустимое число перенаправлений")
+    return [
+        validate_public_https_target(url, allowed_hosts=allowed_hosts)
+        for url in urls
+    ]
