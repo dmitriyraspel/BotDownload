@@ -89,4 +89,9 @@ def load_settings(root: Path = Path(".")) -> Settings:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token or token == "PASTE_YOUR_TELEGRAM_BOT_TOKEN_HERE":
         raise ConfigurationError("TELEGRAM_BOT_TOKEN: секрет не задан")
+    admin_id = os.environ.get("ADMIN_TELEGRAM_ID", "").strip()
+    if admin_id:
+        if not admin_id.isdecimal() or int(admin_id) <= 0:
+            raise ConfigurationError("ADMIN_TELEGRAM_ID: ожидается положительный Telegram ID")
+        data["admin_telegram_id"] = int(admin_id)
     return Settings(data, token)
