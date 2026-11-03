@@ -74,7 +74,7 @@ async def download_to_temporary(url: str, mode: str, duration: object,
         command = build_command(url, mode, max_bytes, directory)
         guarded = network_guard(command)
         if (not isinstance(guarded, (list, tuple)) or not guarded
-                or any(type(arg) is not str or not arg or "\\x00" in arg for arg in guarded)
+                or any(type(arg) is not str or not arg or "\x00" in arg for arg in guarded)
                 or list(guarded) == command):
             raise DownloadError("Не применена изоляция сетевых соединений загрузчика")
         try:
