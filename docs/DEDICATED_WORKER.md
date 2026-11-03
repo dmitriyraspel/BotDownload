@@ -184,3 +184,28 @@ disabled. Do not enable downloading based on static unit checks alone.
 The remaining work includes an authenticated start/cancel protocol,
 worker-owned private job directories, process and resource isolation,
 result transfer, and live public-HTTPS/SSRF tests on the target VPS.
+
+
+## Offline end-to-end integration (opt-in; NOT media)
+
+`bot.offline_queue_integration.process_one_offline_task` exercises a
+complete deterministic path: claim a queued task, create a durable lease,
+reserve via authenticated Unix IPC, confirm `running`, run a fixed
+network-free subprocess in the separate worker, transfer the bounded
+result bytes through IPC, mark the lease finished and stage the result
+in the existing bot-owned `upload_pending` lifecycle. The worker does
+not receive paths, URLs, arguments or SQLite write access. Cancellation
+of the active reservation signals the subprocess and its process group
+is killed by the offline executor.
+
+This path is deliberately **not started by bot.main**. The fixture is
+`offline-result.bin`, not a video or audio file; it must never be
+sent to users as media. It tests staging, not actual Telegram delivery.
+The worker must have read-only access to the broker's SQLite database
+and the containing directory, without write access; configure this
+explicitly on a target installation rather than changing permissions
+on the bot's private database blindly.
+
+Production media delivery, automatic worker scheduling, crash-safe
+cancellation across restarts, and public HTTPS egress isolation remain
+separate deployment gates. The systemd unit still denies all IP traffic.
