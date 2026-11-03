@@ -34,6 +34,8 @@ async def run_bot(settings) -> None:
         max_attempts=settings.data["telegram_upload_max_attempts"],
         second_attempt_delay_seconds=settings.data["telegram_upload_second_attempt_delay_seconds"],
         third_attempt_delay_seconds=settings.data["telegram_upload_third_attempt_delay_seconds"],
+        daily_limit=settings.data["limits"]["daily_download_limit"],
+        trusted_users=tuple(settings.data["trusted_users"]),
     ))
     try:
         await dispatcher.start_polling(bot)
