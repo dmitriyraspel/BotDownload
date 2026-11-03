@@ -1,10 +1,10 @@
 """Metadata-only inspection for supported media sites."""
 import asyncio
-from functools import partial
 
 import yt_dlp
 
 from .telegram_handlers import validate_media_url
+from .local_tools import yt_dlp_js_options
 
 
 class AnalysisError(Exception):
@@ -24,6 +24,7 @@ def _extract(url: str) -> dict:
         "socket_timeout": 10,
         "retries": 0,
         "extractor_retries": 0,
+        **yt_dlp_js_options(),
     }
     with yt_dlp.YoutubeDL(opts) as downloader:
         info = downloader.extract_info(url, download=False)
