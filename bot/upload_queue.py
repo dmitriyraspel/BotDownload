@@ -28,6 +28,7 @@ async def run_upload_queue(
     configured_download_dir: str, max_bytes: int, max_attempts: int,
     second_attempt_delay_seconds: int, third_attempt_delay_seconds: int,
     idle_seconds: float = 1.0, project_root: Path = Path("."),
+    daily_limit: int = 3, trusted_users: tuple[int, ...] = (),
 ) -> None:
     """Send one pending file at a time, waiting when no upload is due."""
     if idle_seconds <= 0:
@@ -42,6 +43,7 @@ async def run_upload_queue(
                 second_attempt_delay_seconds=second_attempt_delay_seconds,
                 third_attempt_delay_seconds=third_attempt_delay_seconds,
                 project_root=project_root,
+                daily_limit=daily_limit, trusted_users=trusted_users,
             )
             if delivered:
                 continue
