@@ -86,3 +86,22 @@ def test_unclaimed_task_is_not_reserved(tmp_path):
     assert not asyncio.run(reserve_claimed_task(
         db_path=path, socket_path=Path("/tmp/offline.sock"), task_id=task_id
     ))
+
+
+def test_task_cancelled_during_ipc_cannot_become_running(tmp_path):
+    path, task_id = claimed(tmp_path)
+
+    async def cancel_during_reservation(*args, **kwargs):
+        with database(path) as db:
+            assert change_status(db, task_id, "downloading", "cancelled")
+        return True
+
+    async def cancelled(*args, **kwargs):
+        return True
+
+    with (patch("bot.worker_broker.reserve_worker_job", cancel_during_reservation),
+          patch("bot.worker_broker.cancel_worker_reservation", cancelled)):
+        assert not asyncio.run(reserve_claimed_task(
+            db_path=path, socket_path=Path("/tmp/offline.sock"), task_id=task_id
+        ))
+    assert state(path, task_id) == "cancelled"
