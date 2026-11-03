@@ -21,8 +21,17 @@ def estimated_bytes(fmt: dict, duration: object = None) -> tuple[int | None, boo
 
 
 def mp3_estimate(info: dict) -> int | None:
-    # VBR output is not predictable from source bitrate. No fabricated estimate.
-    return None
+    duration = info.get("duration")
+    if not isinstance(duration, (int, float)) or isinstance(duration, bool) or not isfinite(duration) or duration <= 0:
+        return None
+    audio = _preferred_audio([f for f in info.get("formats", []) if isinstance(f, dict)])
+    if audio is None:
+        return None
+    bitrate = audio.get("abr") or audio.get("tbr")
+    if not isinstance(bitrate, (int, float)) or isinstance(bitrate, bool) or not isfinite(bitrate) or bitrate <= 0:
+        return None
+    # Approximation from source bitrate, not the final VBR encoder output.
+    return int(min(bitrate, 320) * 1000 * duration / 8)
 
 
 def _preferred_audio(formats: list[dict]) -> dict | None:
@@ -66,7 +75,7 @@ def available_variants(info: dict) -> list[dict]:
         result.append({"kind": "video", "quality": f"{height}p", "size": size,
                        "approximate": approximate or candidate.get("acodec") in (None, "none")})
     if any(f.get("acodec") not in (None, "none") for f in formats):
-        result.append({"kind": "mp3", "quality": "MP3", "size": None, "approximate": True})
+        result.append({"kind": "mp3", "quality": "MP3", "size": mp3_estimate(info), "approximate": True})
     return result
 
 
