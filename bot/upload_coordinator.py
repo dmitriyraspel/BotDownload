@@ -17,10 +17,11 @@ async def upload_one_task(
     second_attempt_delay_seconds: int,
     third_attempt_delay_seconds: int,
     project_root: Path = Path("."),
+    daily_limit: int = 3, trusted_users: tuple[int, ...] = (),
 ) -> bool:
     """Return True only on confirmed delivery; otherwise False.
 
-    Expected Telegram errors are logged and retried with a bounded schedule.
+    Ambiguous Telegram errors are logged and quarantined, never auto-retried.
     No file is removed here. The caller must not run concurrent upload
     coordinators for the same task.
     """
@@ -38,6 +39,7 @@ async def upload_one_task(
             configured_download_dir=configured_download_dir,
             sender=sender, max_bytes=max_bytes,
             project_root=project_root,
+            daily_limit=daily_limit, trusted_users=trusted_users,
         )
     except Exception:
         from .storage import database
