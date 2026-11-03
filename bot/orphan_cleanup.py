@@ -12,7 +12,7 @@ import stat
 from .download_storage import download_root
 from .storage import database
 
-_TASK_DIR = re.compile(r"task-([1-9][0-9]*)-[0-9a-f]{32}\\Z")
+_TASK_DIR = re.compile(r"task-([1-9][0-9]*)-[0-9a-f]{32}\Z")
 
 
 def remove_orphan_task_directory(
