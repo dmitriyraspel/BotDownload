@@ -68,3 +68,33 @@ def test_egress_guard_accepts_portable_service_account(monkeypatch):
     monkeypatch.setattr(Path, "is_dir", lambda self: True)
     cmd = network_egress.systemd_metadata_guard(["python"], user="media_worker-1")
     assert "--property=User=media_worker-1" in cmd
+
+
+@pytest.mark.parametrize("property_name", [
+    "PrivateDevices=yes",
+    "ProtectKernelTunables=yes",
+    "ProtectKernelModules=yes",
+    "ProtectControlGroups=yes",
+    "RestrictSUIDSGID=yes",
+    "LockPersonality=yes",
+    "CapabilityBoundingSet=",
+    "UMask=0077",
+    "MemoryMax=1G",
+    "TasksMax=32",
+    "RuntimeMaxSec=120",
+    "LimitFSIZE=2147483648",
+])
+def test_egress_guard_has_resource_and_privilege_limits(monkeypatch, property_name):
+    monkeypatch.setattr(network_egress.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    cmd = network_egress.systemd_metadata_guard(["python"])
+    assert "--property=" + property_name in cmd
+
+
+def test_egress_guard_passes_command_only_after_separator(monkeypatch):
+    monkeypatch.setattr(network_egress.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    payload = ["python", "--property=MemoryMax=infinity"]
+    cmd = network_egress.systemd_metadata_guard(payload)
+    assert cmd[cmd.index("--") + 1:] == payload
+    assert cmd.index("--property=MemoryMax=1G") < cmd.index("--")
