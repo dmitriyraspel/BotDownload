@@ -59,21 +59,48 @@ async def link(message: Message) -> None:
         return
     duration = info.get("duration")
     duration_text = f"{int(duration)} сек." if isinstance(duration, (int, float)) and duration >= 0 else "неизвестна"
+    from .media_variants import size_label
+    variants = info.get("variants", [])
     buttons = []
-    if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration > 0:
-        if duration <= settings.data["limits"]["max_video_duration_seconds"]:
-            buttons.append(InlineKeyboardButton(text="🎬 Видео", callback_data="preview:video"))
-        if duration <= settings.data["limits"]["max_audio_duration_seconds"]:
-            buttons.append(InlineKeyboardButton(text="🎵 MP3", callback_data="preview:mp3"))
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
-    note = ("Выбери формат (скачивание пока отключено)." if buttons
-            else "Скачивание недоступно: неизвестная или слишком большая длительность.")
-    await message.answer(
-        f"Название: {info['title']}\\nДлительность: {duration_text}\\n{note}",
-        reply_markup=keyboard,
-    )
+    details = []
+    for variant in variants:
+        quality = variant["quality"]
+        kind = variant["kind"]
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration > 0:
+            limit = settings.data["limits"]["max_audio_duration_seconds" if kind == "mp3" else "max_video_duration_seconds"]
+            if duration > limit:
+                continue
+        size = size_label(variant["size"], variant["approximate"])
+        details.append(f"{quality}: {size}")
+        buttons.append([InlineKeyboardButton(text=f"{quality} · {size}", callback_data=f"preview:{quality}")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+    detail_text = "\\n".join(details) if details else "Доступные варианты не определены"
+    card = (f"Название: {info['title']}\\nДлительность: {duration_text}\\n"
+            f"Аудио: {info.get('language', 'Язык аудио не определён')}\\n"
+            f"Варианты:\\n{detail_text}\\n"
+            "Скачивание пока отключено.")
+    # Do not ask Telegram to fetch arbitrary third-party URLs.
+    # Only YouTube's dedicated thumbnail CDN is accepted for this preview.
+    thumbnail = info.get("thumbnail", "")
+    from urllib.parse import urlsplit as _split
+    try:
+        thumb_url = _split(thumbnail)
+        trusted_thumbnail = (thumb_url.scheme == "https" and
+                             thumb_url.hostname in ("i.ytimg.com", "img.youtube.com") and
+                             not thumb_url.username and not thumb_url.password and
+                             thumb_url.port in (None, 443))
+    except ValueError:
+        trusted_thumbnail = False
+    if trusted_thumbnail and len(card) <= 1024:
+        try:
+            await message.answer_photo(photo=thumbnail, caption=card, reply_markup=keyboard)
+            return
+        except Exception:
+            # Thumbnail failures should not prevent a metadata card.
+            pass
+    await message.answer(card, reply_markup=keyboard)
 
 
-@router.callback_query(F.data.in_({"preview:video", "preview:mp3"}))
+@router.callback_query(F.data.in_({"preview:480p", "preview:720p", "preview:1080p", "preview:MP3"}))
 async def preview_format(callback: CallbackQuery) -> None:
     await callback.answer("Формат выбран. Скачивание пока не включено.", show_alert=True)
