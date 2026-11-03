@@ -33,7 +33,6 @@ def main(argv: list[str] | None = None) -> int:
         server.listen(4)
         server.settimeout(8)
         port = server.getsockname()[1]
-        accepted = []
         stop = threading.Event()
 
         def accept_connections():
@@ -44,7 +43,6 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 except OSError:
                     return
-                accepted.append(True)
                 connection.close()
 
         server.settimeout(0.2)
@@ -52,12 +50,20 @@ def main(argv: list[str] | None = None) -> int:
         thread.start()
         child = [sys.executable, "-m", "bot.egress_loopback_probe", "--child-port", str(port)]
         try:
-            baseline = subprocess.run(child, capture_output=True, text=True, timeout=8)
+            guarded_command = systemd_metadata_guard(child)
+            # Compare identical systemd services, changing only IPAddressDeny.
+            # This rules out unrelated sandbox restrictions and user permissions.
+            baseline_command = [arg for arg in guarded_command
+                                if not arg.startswith("--property=IPAddressDeny=")]
+            baseline = subprocess.run(baseline_command, capture_output=True,
+                                      text=True, timeout=15)
             print(f"Baseline: {baseline.stdout.strip()} (exit={baseline.returncode})")
             if baseline.returncode != 0 or baseline.stdout.strip() != "CONNECTED":
-                print("INCONCLUSIVE: baseline loopback connection failed")
+                print("INCONCLUSIVE: same-user systemd baseline failed")
+                if baseline.stderr.strip():
+                    print(baseline.stderr.strip()[:500], file=sys.stderr)
                 return 2
-            guarded = subprocess.run(systemd_metadata_guard(child),
+            guarded = subprocess.run(guarded_command,
                                      capture_output=True, text=True, timeout=15)
             print(f"Confined: {guarded.stdout.strip()} (exit={guarded.returncode})")
             if guarded.stderr.strip():
