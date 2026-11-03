@@ -57,7 +57,8 @@ def load_settings(root: Path = Path(".")) -> Settings:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise ConfigurationError("config.yaml: не удалось прочитать конфигурацию") from exc
-    data.setdefault("storage", {}).setdefault("download_dir", "data/downloads") if isinstance(data, dict) and isinstance(data.get("storage"), dict) else None
+    if isinstance(data, dict) and isinstance(data.get("storage"), dict):
+        data["storage"].setdefault("download_dir", "data/downloads")
     _validate(data, SCHEMA)
     download_dir = data["storage"]["download_dir"]
     if (not download_dir.strip() or "\\x00" in download_dir or "\\n" in download_dir or "\\r" in download_dir):
