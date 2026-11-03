@@ -81,3 +81,14 @@ def test_one_preview_cannot_queue_two_formats(tmp_path):
         assert db.execute(
             "SELECT COUNT(*) FROM tasks WHERE chat_id=1 AND message_id=1"
         ).fetchone()[0] == 1
+
+
+def test_other_user_cannot_reuse_preview_task(tmp_path):
+    with database(tmp_path / "queue.sqlite") as db:
+        _enqueue(db, "1")
+        with pytest.raises(ValueError, match="другому пользователю"):
+            enqueue_task(
+                db, max_pending=20, user_id=2, chat_id=1, message_id=1,
+                callback_key="another-user", source_url="https://youtu.be/abc",
+                media_key="youtube:abc", variant="MP3",
+            )
