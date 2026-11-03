@@ -31,6 +31,7 @@ def test_egress_guard_builds_constrained_service(monkeypatch):
     cmd = network_egress.systemd_metadata_guard(["python", "-m", "bot.metadata_worker"])
     assert cmd[0] == "systemd-run"
     assert "--property=User=tgbot" in cmd
+    assert f"--property=WorkingDirectory={Path(network_egress.__file__).resolve().parent.parent}" in cmd
     assert "--property=NoNewPrivileges=yes" in cmd
     assert any(arg.startswith("--property=IPAddressDeny=") for arg in cmd)
     assert cmd[-3:] == ["python", "-m", "bot.metadata_worker"]
