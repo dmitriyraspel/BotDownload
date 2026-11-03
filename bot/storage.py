@@ -190,3 +190,55 @@ def cancel_preview_record(connection: sqlite3.Connection, *, chat_id: int,
         (chat_id,message_id,user_id),
     )
     return cursor.rowcount == 1
+
+
+def enqueue_task(connection: sqlite3.Connection, *, max_pending: int, **kwargs) -> tuple[int, bool]:
+    """Queue a task if capacity permits; duplicate callback never uses a slot."""
+    if max_pending <= 0:
+        raise ValueError("max_pending должен быть положительным")
+    connection.execute("BEGIN IMMEDIATE")
+    existing = connection.execute(
+        "SELECT id,user_id FROM tasks WHERE callback_key=?", (kwargs["callback_key"],)
+    ).fetchone()
+    if existing:
+        if existing[1] != kwargs["user_id"]:
+            raise ValueError("Действие принадлежит другому пользователю")
+        return existing[0], False
+    pending = connection.execute(
+        "SELECT COUNT(*) FROM tasks WHERE status='queued'"
+    ).fetchone()[0]
+    if pending >= max_pending:
+        raise OverflowError("Очередь заполнена")
+    return create_task(connection, **kwargs)
+
+
+def claim_next_task(connection: sqlite3.Connection, *, max_wait_minutes: int) -> int | None:
+    """Claim oldest eligible queued task; expire tasks that waited too long."""
+    if max_wait_minutes <= 0:
+        raise ValueError("max_wait_minutes должен быть положительным")
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """UPDATE tasks SET status='failed' WHERE status='queued'
+        AND created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?)""",
+        (f"-{max_wait_minutes} minutes",),
+    )
+    row = connection.execute(
+        "SELECT id FROM tasks WHERE status='queued' ORDER BY created_at,id LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return None
+    task_id = row[0]
+    if not change_status(connection, task_id, "queued", "downloading"):
+        return None
+    return task_id
+
+
+def recover_interrupted_tasks(connection: sqlite3.Connection) -> int:
+    """Restore interrupted downloads to the queue; preserve upload retries."""
+    cursor = connection.execute(
+        """UPDATE tasks SET status='queued' WHERE status IN ('downloading','processing')"""
+    )
+    connection.execute(
+        "UPDATE tasks SET status='upload_pending' WHERE status='uploading'"
+    )
+    return cursor.rowcount
