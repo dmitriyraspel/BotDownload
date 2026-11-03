@@ -38,6 +38,8 @@ def test_run_bot_starts_and_stops_upload_queue(monkeypatch, tmp_path):
             "max_upload_size_mb": {"cloud": 50, "local": 2000},
         },
         "storage": {"download_dir": str(tmp_path)},
+        "limits": {"daily_download_limit": 3},
+        "trusted_users": [],
         "telegram_upload_max_attempts": 3,
         "telegram_upload_second_attempt_delay_seconds": 5,
         "telegram_upload_third_attempt_delay_seconds": 10,
