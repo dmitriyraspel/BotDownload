@@ -39,7 +39,7 @@ def test_ready_file_rejects_invalid_state_and_path(tmp_path):
         task_id = _processing(db)
         assert not mark_file_ready(db, 0, "/safe/file")
         assert not mark_file_ready(db, 999, "/safe/file")
-        for bad in ("", " ", "bad\\x00path"):
+        for bad in ("", " ", "bad\x00path"):
             try:
                 mark_file_ready(db, task_id, bad)
             except ValueError:
