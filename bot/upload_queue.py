@@ -16,8 +16,7 @@ def next_due_upload(db_path: Path) -> int | None:
         row = db.execute(
             """SELECT id FROM tasks
             WHERE status='upload_pending'
-              AND (next_upload_at IS NULL OR next_upload_at <=
-                   strftime('%Y-%m-%dT%H:%M:%f+00:00','now'))
+              AND (next_upload_at IS NULL OR julianday(next_upload_at) <= julianday('now'))
             ORDER BY created_at,id LIMIT 1"""
         ).fetchone()
         return row[0] if row else None
