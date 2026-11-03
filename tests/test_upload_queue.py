@@ -85,3 +85,37 @@ def test_upload_queue_stops_without_pending_tasks(tmp_path):
         )
 
     asyncio.run(run())
+
+
+def test_quota_blocked_oldest_does_not_starve_other_user(tmp_path):
+    from datetime import datetime, timezone
+    root = tmp_path / "downloads"
+    root.mkdir()
+    db_path = tmp_path / "db.sqlite"
+    blocked = setup_task(db_path, root, "blocked")
+    eligible = setup_task(db_path, root, "eligible")
+    day = datetime.now(timezone.utc).date().isoformat()
+    with database(db_path) as db:
+        db.execute("UPDATE tasks SET user_id=4 WHERE id=?", (eligible,))
+        db.execute(
+            "INSERT INTO daily_usage(user_id,utc_day,task_id) VALUES (?,?,?)",
+            (3, day, blocked),
+        )
+    assert next_due_upload(db_path, daily_limit=1) == eligible
+    assert next_due_upload(db_path, daily_limit=1, trusted_users=(3,)) == blocked
+
+
+def test_quota_reservation_blocks_candidate_without_delivery(tmp_path):
+    from datetime import datetime, timezone
+    root = tmp_path / "downloads"
+    root.mkdir()
+    db_path = tmp_path / "db.sqlite"
+    task_id = setup_task(db_path, root, "reserved")
+    day = datetime.now(timezone.utc).date().isoformat()
+    with database(db_path) as db:
+        db.execute(
+            "INSERT INTO delivery_reservations(task_id,user_id,utc_day) VALUES (?,?,?)",
+            (task_id, 3, day),
+        )
+    assert next_due_upload(db_path, daily_limit=1) is None
+    assert next_due_upload(db_path, daily_limit=2) == task_id
