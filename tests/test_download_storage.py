@@ -56,3 +56,21 @@ def test_reject_cleanup_symlink(tmp_path):
     with pytest.raises(DownloadStorageError):
         cleanup_task_directory(root, link)
     assert external.exists()
+
+
+def test_free_space_preflight(tmp_path, monkeypatch):
+    from collections import namedtuple
+    from bot.download_storage import require_free_space
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr("bot.download_storage.shutil.disk_usage",
+                        lambda path: usage(1000, 600, 400))
+    assert require_free_space(tmp_path, 300, reserve_bytes=100) == 400
+    with pytest.raises(DownloadStorageError, match="свободного места"):
+        require_free_space(tmp_path, 301, reserve_bytes=100)
+
+
+@pytest.mark.parametrize("expected,reserve", [(0, 0), (-1, 0), (True, 0), (1, -1), (1, False)])
+def test_free_space_rejects_invalid_limits(tmp_path, expected, reserve):
+    from bot.download_storage import require_free_space
+    with pytest.raises(DownloadStorageError):
+        require_free_space(tmp_path, expected, reserve_bytes=reserve)
