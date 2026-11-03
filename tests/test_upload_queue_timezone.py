@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from bot.storage import change_status, create_task, database
+from bot.storage import change_status, create_task, database, mark_file_ready
 from bot.upload_queue import next_due_upload
 
 
@@ -14,7 +14,7 @@ def test_due_upload_handles_mixed_timezone_offsets(tmp_path):
         )
         assert change_status(db, task_id, "queued", "downloading")
         assert change_status(db, task_id, "downloading", "processing")
-        assert change_status(db, task_id, "processing", "upload_pending")
+        assert mark_file_ready(db, task_id, "/staged/video.mp4")
 
         # +05:00 local time can look lexically later even when UTC has passed.
         past = (datetime.now(timezone.utc) - timedelta(minutes=10)).astimezone(
