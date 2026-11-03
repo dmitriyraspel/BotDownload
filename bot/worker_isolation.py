@@ -48,7 +48,17 @@ def verify_offline_unit(text: str) -> None:
             key, value = line.split("=", 1)
             entries.setdefault(key.strip(), []).append(value.strip())
     for key, value in REQUIRED.items():
-        if entries.get(key) != [value]:
+        if key == "Environment":
+            # Multiple Environment directives are normal in systemd.
+            # The trusted client UID setting must occur exactly once.
+            settings = entries.get("Environment", [])
+            client_settings = [
+                item for item in settings
+                if item.startswith("BOTDOWNLOAD_CLIENT_USER=")
+            ]
+            if client_settings != [value]:
+                raise IsolationConfigurationError(f"Не подтверждена изоляция: {key}")
+        elif entries.get(key) != [value]:
             raise IsolationConfigurationError(f"Не подтверждена изоляция: {key}")
     if entries.get("User") in (None, ["root"], ["0"]):
         raise IsolationConfigurationError("Worker не должен работать от root")
