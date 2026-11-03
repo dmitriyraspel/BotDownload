@@ -60,3 +60,20 @@ The Telegram handler intentionally still provides metadata only. Before enabling
 downloads from arbitrary users, implement and test network isolation against
 SSRF (including redirects and extractor-internal requests), enforce quotas and
 upload limits, and test the complete flow on Windows and Debian.
+
+
+### Диагностика отправок с неопределённым результатом
+
+Если процесс отправки был прерван, Telegram мог уже принять файл. Такие
+задачи остаются в состоянии `uploading` и **не отправляются повторно**
+автоматически. Для просмотра списка без изменения базы данных:
+
+```bash
+.venv/bin/python -m bot.upload_reconciliation --db data/bot.sqlite
+.venv/bin/python -m bot.upload_reconciliation --db data/bot.sqlite --json
+```
+
+Укажите **фактический путь** к SQLite-базе вашего развёртывания (путь выше —
+пример). Команда не освобождает квоты, не удаляет файлы и не пытается
+повторно отправлять медиа. Разрешение неопределённых доставок требует
+отдельного подтверждённого оператором сценария.
