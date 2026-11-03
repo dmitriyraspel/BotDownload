@@ -10,7 +10,7 @@ import stat
 
 from .download_storage import DownloadStorageError, create_task_directory
 
-_WORKSPACE = re.compile(r'task-([1-9][0-9]*)-[0-9a-f]{32}\\Z')
+_WORKSPACE = re.compile(r'task-([1-9][0-9]*)-[0-9a-f]{32}\Z')
 
 
 def stage_ready_file(root: Path, workspace: Path, filename: str, task_id: str) -> Path:
