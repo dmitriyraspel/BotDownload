@@ -75,3 +75,29 @@ def test_rejects_empty_dns_response(monkeypatch):
     lookup(monkeypatch, [])
     with pytest.raises(UnsafeNetworkTarget, match="DNS"):
         validate_public_https_target(URL, allowed_hosts=HOSTS)
+
+
+@pytest.mark.parametrize("sockaddr", [
+    ("8.8.8.8", 80),
+    ("8.8.8.8", True),
+    ("8.8.8.8", "443"),
+    ("8.8.8.8", 443, 0),
+    ("8.8.8.8",),
+])
+def test_rejects_malformed_ipv4_sockaddr(monkeypatch, sockaddr):
+    lookup(monkeypatch, [(socket.AF_INET, socket.SOCK_STREAM, 6, "", sockaddr)])
+    with pytest.raises(UnsafeNetworkTarget, match="DNS"):
+        validate_public_https_target(URL, allowed_hosts=HOSTS)
+
+
+@pytest.mark.parametrize("sockaddr", [
+    ("2001:4860:4860::8888", 80, 0, 0),
+    ("2001:4860:4860::8888", 443, 1, 0),
+    ("2001:4860:4860::8888", 443, 0, 2),
+    ("2001:4860:4860::8888", 443, 0),
+    ("2001:4860:4860::8888", True, 0, 0),
+])
+def test_rejects_malformed_ipv6_sockaddr(monkeypatch, sockaddr):
+    lookup(monkeypatch, [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", sockaddr)])
+    with pytest.raises(UnsafeNetworkTarget, match="DNS"):
+        validate_public_https_target(URL, allowed_hosts=HOSTS)
