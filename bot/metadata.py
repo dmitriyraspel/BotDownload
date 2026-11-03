@@ -5,6 +5,7 @@ import yt_dlp
 
 from .telegram_handlers import validate_media_url
 from .local_tools import yt_dlp_js_options
+from .media_variants import available_variants, selected_language
 
 
 class AnalysisError(Exception):
@@ -34,6 +35,9 @@ def _extract(url: str) -> dict:
         "title": str(info.get("title") or "Без названия")[:200],
         "duration": info.get("duration"),
         "extractor": str(info.get("extractor_key") or ""),
+        "thumbnail": str(info.get("thumbnail") or ""),
+        "language": selected_language(info),
+        "variants": available_variants(info),
     }
 
 
