@@ -28,4 +28,6 @@ def test_rejected_links():
 def test_unlisted_subdomains_rejected():
     assert not validate_media_url("https://private.youtube.com/watch?v=x")
     assert not validate_media_url("https://attacker.instagram.com/reel/x")
-    assert validate_media_url("https://vm.tiktok.com/abc")
+    assert validate_media_url("https://m.tiktok.com/@x/video/123")
+    assert not validate_media_url("https://vm.tiktok.com/abc")
+    assert not validate_media_url("https://vt.tiktok.com/abc")
