@@ -71,3 +71,29 @@ class JobReservations:
     def clear(self) -> None:
         """Revoke all local reservations after an interrupted IPC session."""
         self._active = None
+
+
+def verify_running_lease(db_path: Path | None, task_id: int, token: str) -> bool:
+    """Check broker-confirmed running state immediately before offline work."""
+    if (not isinstance(db_path, Path) or not db_path.is_absolute()
+            or type(task_id) is not int or not 0 < task_id <= 9223372036854775807
+            or not valid_token(token)):
+        return False
+    try:
+        uri = "file:" + quote(str(db_path), safe="/") + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=1)) as db:
+            db.execute("PRAGMA query_only=ON")
+            row = db.execute(
+                """SELECT l.token_hash,l.expires_at FROM worker_job_leases l
+                JOIN tasks t ON t.id=l.task_id
+                WHERE l.task_id=? AND l.state='running'
+                AND t.status='downloading'""", (task_id,),
+            ).fetchone()
+        if row is None:
+            return False
+        expiry = datetime.fromisoformat(row[1])
+        return (expiry.tzinfo is not None
+                and expiry > datetime.now(timezone.utc)
+                and hmac.compare_digest(row[0], hashlib.sha256(token.encode()).hexdigest()))
+    except (sqlite3.Error, OSError, ValueError, TypeError):
+        return False
