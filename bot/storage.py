@@ -222,6 +222,11 @@ def claim_next_task(connection: sqlite3.Connection, *, max_wait_minutes: int) ->
         AND created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?)""",
         (f"-{max_wait_minutes} minutes",),
     )
+    active = connection.execute(
+        "SELECT COUNT(*) FROM tasks WHERE status IN ('downloading','processing')"
+    ).fetchone()[0]
+    if active:
+        return None
     row = connection.execute(
         "SELECT id FROM tasks WHERE status='queued' ORDER BY created_at,id LIMIT 1"
     ).fetchone()
