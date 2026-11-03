@@ -13,6 +13,7 @@ def test_worker_rejects_invalid_url(capsys):
 
 
 def test_worker_serializes_extracted_data(monkeypatch, capsys):
+    monkeypatch.setattr(metadata_worker, "validate_public_https_target", lambda url, *, allowed_hosts: ("8.8.8.8",))
     monkeypatch.setattr(metadata_worker, "_extract", lambda url: {"title": "Привет"})
     assert metadata_worker.main(["https://youtu.be/abc"]) == 0
     assert json.loads(capsys.readouterr().out) == {"title": "Привет"}
@@ -21,6 +22,7 @@ def test_worker_serializes_extracted_data(monkeypatch, capsys):
 def test_worker_hides_extractor_errors(monkeypatch, capsys):
     def fail(url):
         raise RuntimeError("secret URL token")
+    monkeypatch.setattr(metadata_worker, "validate_public_https_target", lambda url, *, allowed_hosts: ("8.8.8.8",))
     monkeypatch.setattr(metadata_worker, "_extract", fail)
     assert metadata_worker.main(["https://youtu.be/abc"]) == 1
     assert capsys.readouterr().out == ""
