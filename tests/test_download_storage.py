@@ -110,3 +110,16 @@ def test_cleanup_accepts_generated_alphanumeric_task_id(tmp_path):
     directory = create_task_directory(root, "abc_42")
     cleanup_task_directory(root, directory)
     assert not directory.exists()
+
+
+@pytest.mark.parametrize("configured", [None, 0, True, 42, [], ""])
+def test_download_root_rejects_invalid_configured_path(tmp_path, configured):
+    with pytest.raises(DownloadStorageError):
+        download_root(configured, tmp_path)
+
+
+@pytest.mark.parametrize("task_id", [None, 1, True, [], "../escape", ""])
+def test_create_task_directory_rejects_invalid_identifier(tmp_path, task_id):
+    with pytest.raises(DownloadStorageError):
+        create_task_directory(tmp_path, task_id)
+    assert list(tmp_path.iterdir()) == []
