@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from bot.storage import create_task, database, cancel_task, change_status
 from bot.worker_leases import offer_job, transition_job
 from bot.worker_recovery import reconcile_worker_leases
-from bot.startup_recovery import recover_before_workers
 
 
 def _leased(db):
