@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+import tempfile
 from urllib.parse import quote
 
 from .media_egress_gateway import handle_connect
@@ -57,9 +58,11 @@ class MediaJobController:
         self._busy = True
         workspace = None
         gateway = None
+        gateway_dir = None
         try:
             workspace = create_task_directory(root, str(task_id))
-            gateway_path = workspace / "gateway.sock"
+            gateway_dir = tempfile.TemporaryDirectory(prefix="botdownload-egress-")
+            gateway_path = Path(gateway_dir.name) / "gateway.sock"
             gateway = await asyncio.start_unix_server(handle_connect, path=str(gateway_path))
             os.chmod(gateway_path, 0o600)
             async with gateway:
@@ -68,7 +71,6 @@ class MediaJobController:
                     timeout_seconds=120, max_bytes=256 * 1024 * 1024,
                 )
             # Socket is not a downloadable file; unlink before returning.
-            gateway_path.unlink(missing_ok=True)
             if not verify_running_lease(db_path, task_id, token):
                 return rejected
             st = file.lstat()
@@ -83,4 +85,6 @@ class MediaJobController:
             if gateway is not None:
                 gateway.close()
                 await gateway.wait_closed()
+            if gateway_dir is not None:
+                gateway_dir.cleanup()
             self._busy = False
