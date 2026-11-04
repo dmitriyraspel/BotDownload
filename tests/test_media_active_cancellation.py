@@ -113,7 +113,7 @@ def test_ipc_cancel_signals_active_media(tmp_path):
             writer.write(json.dumps({
                 "version": 1, "op": "cancel_reservation",
                 "task_id": 7, "token": token,
-            }).encode() + b"\\n")
+            }).encode() + b"\n")
             await writer.drain()
             response = json.loads(await asyncio.wait_for(reader.readline(), 3))
             assert response["status"] == "accepted"
