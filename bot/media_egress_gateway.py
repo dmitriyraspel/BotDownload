@@ -35,7 +35,7 @@ def parse_connect(line: bytes) -> tuple[str, int]:
         host, port = authority.rsplit(":", 1)
     except (UnicodeError, ValueError) as exc:
         raise EgressDenied("Malformed CONNECT") from exc
-    if method != "CONNECT" or version != "HTTP/1.1" or port != "443" or not permitted_host(host):
+    if method != "CONNECT" or version not in ("HTTP/1.0", "HTTP/1.1") or port != "443" or not permitted_host(host):
         raise EgressDenied("Destination not permitted")
     return host, 443
 
@@ -95,7 +95,10 @@ async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             host_seen = True
             if header[5:].strip().decode("ascii", errors="replace") != host + ":443":
                 raise EgressDenied("Host header mismatch")
-        if not host_seen:
+        # Python 3.11 urllib/http.client emits HTTP/1.0 CONNECT without
+        # a Host header. The CONNECT authority is already validated above.
+        # HTTP/1.1 still requires Host, and any supplied Host must match.
+        if not host_seen and line.endswith(b"HTTP/1.1\r\n"):
             raise EgressDenied("Missing Host header")
         addresses = await resolve_public(host)
         for family, ip in addresses:
