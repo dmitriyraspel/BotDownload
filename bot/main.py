@@ -54,8 +54,18 @@ async def run_bot(settings) -> None:
     worker_exit = asyncio.create_task(worker.wait())
     try:
         done, _ = await asyncio.wait(
-            (polling, worker_exit), return_when=asyncio.FIRST_COMPLETED,
+            (polling, worker_exit, upload, maintenance),
+            return_when=asyncio.FIRST_COMPLETED,
         )
+        for service, label in ((upload, 'Telegram upload queue'),
+                               (maintenance, 'Queue maintenance')):
+            if service in done:
+                if service.cancelled():
+                    raise RuntimeError(f'{label} неожиданно отменён')
+                failure = service.exception()
+                if failure is not None:
+                    raise RuntimeError(f'{label} завершился с ошибкой') from failure
+                raise RuntimeError(f'{label} неожиданно завершился')
         if worker_exit in done and polling not in done:
             failed = reconcile_confirmed_worker_exit(Path("data/bot.sqlite"))
             logging.error("Worker завершился: %d активных задач помечено failed", failed)
@@ -75,7 +85,13 @@ async def run_bot(settings) -> None:
             except asyncio.CancelledError:
                 pass
         stop.set()
-        await maintenance
+        if not maintenance.done():
+            await maintenance
+        else:
+            try:
+                maintenance.result()
+            except (Exception, asyncio.CancelledError):
+                logging.exception('Ошибка обслуживания очереди при остановке')
         try:
             await asyncio.wait_for(upload, timeout=10)
         except asyncio.TimeoutError:
