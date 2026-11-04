@@ -80,3 +80,47 @@ def test_active_cancel_kills_isolated_process_group(tmp_path):
                         except asyncio.CancelledError:
                             pass
     asyncio.run(scenario())
+
+
+def test_ipc_cancel_signals_active_media(tmp_path):
+    """Authenticated cancel_reservation reaches the active media controller."""
+    import json
+    from bot.worker_ipc import handle_connection
+
+    class Reservations:
+        def cancel(self, task_id, token):
+            return True
+
+    class Media:
+        def __init__(self):
+            self.calls = []
+        def cancel(self, task_id, token):
+            self.calls.append((task_id, token))
+            return True
+
+    async def scenario():
+        media = Media()
+        token = "a" * 64
+        path = tmp_path / "worker.sock"
+        server = await asyncio.start_unix_server(
+            lambda reader, writer: handle_connection(
+                reader, writer, allowed_uid=os.geteuid(),
+                reservations=Reservations(), media=media,
+            ), path=str(path),
+        )
+        try:
+            reader, writer = await asyncio.open_unix_connection(str(path))
+            writer.write(json.dumps({
+                "version": 1, "op": "cancel_reservation",
+                "task_id": 7, "token": token,
+            }).encode() + b"\\n")
+            await writer.drain()
+            response = json.loads(await asyncio.wait_for(reader.readline(), 3))
+            assert response["status"] == "accepted"
+            assert media.calls == [(7, token)]
+            writer.close()
+            await writer.wait_closed()
+        finally:
+            server.close()
+            await server.wait_closed()
+    asyncio.run(scenario())
