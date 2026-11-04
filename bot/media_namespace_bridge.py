@@ -102,7 +102,12 @@ def main() -> None:
 
 async def _main(gateway: Path, args: list[str], timeout: float) -> None:
     # Loopback is brought up by the namespace launcher before this module.
-    status = await run_download(gateway, args, timeout=timeout)
+    try:
+        status = await run_download(gateway, args, timeout=timeout)
+    except asyncio.TimeoutError:
+        # Dedicated exit status: outer runner must not confuse a real
+        # resource timeout with an extractor/network failure.
+        raise SystemExit(124)
     raise SystemExit(status)
 
 
