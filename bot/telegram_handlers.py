@@ -36,6 +36,30 @@ async def start(message: Message) -> None:
     await message.answer("Привет! Отправь HTTPS-ссылку на YouTube, Instagram или TikTok для анализа.")
 
 
+
+@router.message(Command("cancel"))
+async def cancel_command(message: Message) -> None:
+    """Cancel one owned task by ID; never disclose another user's tasks."""
+    if message.from_user is None:
+        return
+    parts = (message.text or "").split()
+    if (len(parts) != 2 or not parts[1].isascii()
+            or not parts[1].isdecimal() or len(parts[1]) > 19):
+        await message.answer("Использование: /cancel ID_задачи")
+        return
+    task_id = int(parts[1])
+    if task_id <= 0 or task_id > 9223372036854775807:
+        await message.answer("Некорректный номер задачи")
+        return
+    from pathlib import Path
+    from .storage import database, cancel_task
+    with database(Path("data/bot.sqlite")) as db:
+        cancelled = cancel_task(db, task_id=task_id, user_id=message.from_user.id)
+    await message.answer(
+        f"❌ Задача №{task_id} отменена."
+        if cancelled else "Задача не найдена, не принадлежит вам или уже завершена."
+    )
+
 @router.message(Command("myid"))
 async def myid(message: Message) -> None:
     if message.from_user:
