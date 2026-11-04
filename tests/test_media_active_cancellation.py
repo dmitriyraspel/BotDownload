@@ -124,3 +124,67 @@ def test_ipc_cancel_signals_active_media(tmp_path):
             server.close()
             await server.wait_closed()
     asyncio.run(scenario())
+
+
+def test_live_lease_revocation_stops_media_and_removes_partial_file(tmp_path):
+    """Real SQLite lease; active worker observes cancellation without IPC."""
+    from unittest.mock import AsyncMock
+    from bot.storage import database, create_task, change_status, cancel_task
+    from bot.worker_leases import offer_job, transition_job
+    from bot.worker_reservations import JobReservations
+    from bot.worker_media import MediaJobController
+
+    db_path = tmp_path / "test.sqlite"
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    with database(db_path) as db:
+        task_id, _ = create_task(
+            db, user_id=1, chat_id=1, message_id=1,
+            callback_key="cancel-live-lease", source_url="https://youtu.be/abcdefghijk",
+            media_key="test", variant="video",
+        )
+        assert change_status(db, task_id, "queued", "downloading")
+        token = offer_job(db, task_id, ttl_seconds=180)
+    reservations = JobReservations()
+    assert reservations.accept(db_path, task_id, token)
+    with database(db_path) as db:
+        assert transition_job(db, task_id, token, "offered", "running")
+
+    async def scenario():
+        controller = MediaJobController(reservations)
+        started = asyncio.Event()
+        async def simulated_isolated(url, *, gateway, workspace,
+                                     timeout_seconds, max_bytes, cancel):
+            (workspace / "partial.webm").write_bytes(b"partial download")
+            started.set()
+            await asyncio.wait_for(cancel.wait(), timeout=5)
+            raise asyncio.CancelledError()
+
+        with patch.dict(os.environ, {"BOTDOWNLOAD_MEDIA_ROOT": str(media_root)}), \
+             patch("bot.worker_media.execute_isolated", simulated_isolated), \\
+             patch("bot.download_storage.require_free_space"):
+            running = asyncio.create_task(controller.execute(db_path, task_id, token))
+            await asyncio.wait_for(started.wait(), timeout=5)
+            with database(db_path) as db:
+                assert cancel_task(db, task_id=task_id, user_id=1)
+            result = await asyncio.wait_for(running, timeout=5)
+            assert result["status"] == "rejected"
+            assert result["downloads_enabled"] is False
+            assert not list(media_root.iterdir()), "partial workspace survived cancellation"
+            with database(db_path) as db:
+                assert db.execute(
+                    "SELECT status,ready_file FROM tasks WHERE id=?", (task_id,)
+                ).fetchone() == ("cancelled", None)
+    asyncio.run(scenario())
+
+
+def test_lease_watcher_fails_closed_on_missing_lease(tmp_path):
+    from bot.worker_media import watch_media_lease
+    async def scenario():
+        cancel = asyncio.Event()
+        await asyncio.wait_for(
+            watch_media_lease(tmp_path / "missing.sqlite", 1, "a" * 64, cancel),
+            timeout=2,
+        )
+        assert cancel.is_set()
+    asyncio.run(scenario())
