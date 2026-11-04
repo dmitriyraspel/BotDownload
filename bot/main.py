@@ -45,9 +45,28 @@ async def run_bot(settings) -> None:
         daily_limit=settings.data["limits"]["daily_download_limit"],
         trusted_users=tuple(settings.data["trusted_users"]),
     ))
+    polling = asyncio.create_task(dispatcher.start_polling(bot))
+    worker_exit = asyncio.create_task(worker.process.wait())
     try:
-        await dispatcher.start_polling(bot)
+        done, _ = await asyncio.wait(
+            (polling, worker_exit), return_when=asyncio.FIRST_COMPLETED,
+        )
+        if worker_exit in done and polling not in done:
+            raise RuntimeError("Offline worker неожиданно завершился")
+        await polling
     finally:
+        if not polling.done():
+            polling.cancel()
+            try:
+                await polling
+            except asyncio.CancelledError:
+                pass
+        if not worker_exit.done():
+            worker_exit.cancel()
+            try:
+                await worker_exit
+            except asyncio.CancelledError:
+                pass
         stop.set()
         try:
             await asyncio.wait_for(upload, timeout=10)
