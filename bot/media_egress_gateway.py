@@ -74,6 +74,7 @@ async def _relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> 
 
 async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     upstream = None
+    established = False
     try:
         line = await asyncio.wait_for(reader.readline(), timeout=5)
         if not line.endswith(b"\r\n") or len(line) > _MAX_HEADER:
@@ -103,6 +104,7 @@ async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             raise EgressDenied("Upstream unavailable")
         writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         await writer.drain()
+        established = True
         upstream_reader, upstream_writer = upstream
         a = asyncio.create_task(_relay(reader, upstream_writer))
         b = asyncio.create_task(_relay(upstream_reader, writer))
@@ -112,6 +114,8 @@ async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWri
         await asyncio.gather(*pending, return_exceptions=True)
     except (EgressDenied, OSError, asyncio.TimeoutError, ConnectionError):
         try:
+            if established:
+                return
             writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
             await writer.drain()
         except (OSError, ConnectionError):
