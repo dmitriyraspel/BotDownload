@@ -17,6 +17,7 @@ from .startup_recovery import recover_before_workers
 from .ready_cleanup import cleanup_terminal_files
 from .upload_queue import run_upload_queue
 from .worker_supervisor import OfflineWorkerSupervisor
+from .queue_maintenance import run_queue_maintenance
 
 
 async def run_bot(settings) -> None:
@@ -45,6 +46,9 @@ async def run_bot(settings) -> None:
         daily_limit=settings.data["limits"]["daily_download_limit"],
         trusted_users=tuple(settings.data["trusted_users"]),
     ))
+    maintenance = asyncio.create_task(run_queue_maintenance(
+        stop=stop, db_path=Path("data/bot.sqlite"),
+    ))
     polling = asyncio.create_task(dispatcher.start_polling(bot))
     worker_exit = asyncio.create_task(worker.wait())
     try:
@@ -68,6 +72,7 @@ async def run_bot(settings) -> None:
             except asyncio.CancelledError:
                 pass
         stop.set()
+        await maintenance
         try:
             await asyncio.wait_for(upload, timeout=10)
         except asyncio.TimeoutError:
