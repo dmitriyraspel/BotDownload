@@ -104,3 +104,7 @@ def main() -> None:
         raise SystemExit(1) from None
     except KeyboardInterrupt:
         logging.info("Остановка бота")
+
+
+if __name__ == "__main__":
+    main()
