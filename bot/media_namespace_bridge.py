@@ -75,7 +75,7 @@ async def run_download(gateway: Path, args: list[str], *, timeout: float) -> int
             sys.executable, "-m", "yt_dlp", "--proxy", proxy, *args,
             env=env, preexec_fn=limits, stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=None,
         )
         try:
             return await asyncio.wait_for(proc.wait(), timeout=timeout)
