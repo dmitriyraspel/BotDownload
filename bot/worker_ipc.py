@@ -50,7 +50,7 @@ def parse_request(raw: bytes) -> dict:
                     and type(request.get("task_id")) is int
                     and 0 < request["task_id"] <= 9223372036854775807)
                 or (set(request) == {"op", "version", "task_id", "token"}
-                    and request.get("op") in ("reserve", "cancel_reservation", "execute_offline")
+                    and request.get("op") in ("reserve", "cancel_reservation", "execute_offline", "execute_media")
                     and type(request.get("task_id")) is int
                     and 0 < request["task_id"] <= 9223372036854775807
                     and valid_token(request.get("token")))
@@ -98,6 +98,7 @@ async def handle_connection(
     allowed_uid: int, db_path: Path | None = None,
     reservations: JobReservations | None = None,
     offline: OfflineJobController | None = None,
+    media=None,
 ) -> None:
     try:
         if type(allowed_uid) is not int or allowed_uid < 0:
@@ -110,6 +111,10 @@ async def handle_connection(
         request = parse_request(raw[:-1])
         if request["op"] == "ping":
             response = {"version": 1, "status": "ready", "downloads_enabled": False}
+        elif request["op"] == "execute_media":
+            response = (await media.execute(db_path, request["task_id"], request["token"])
+                        if media is not None else
+                        {"version": 1, "status": "rejected", "downloads_enabled": False})
         elif request["op"] == "execute_offline":
             response = (await offline.execute(db_path, request["task_id"], request["token"])
                         if offline is not None else
@@ -164,8 +169,10 @@ async def serve(socket_path: Path, *, allowed_uid: int, db_path: Path | None = N
         raise WorkerProtocolError("Сокет уже существует")
     reservations = JobReservations()
     offline = OfflineJobController(reservations)
+    from .worker_media import MediaJobController
+    media = MediaJobController(reservations)
     server = await asyncio.start_unix_server(
-        lambda r, w: handle_connection(r, w, allowed_uid=allowed_uid, db_path=db_path, reservations=reservations, offline=offline),
+        lambda r, w: handle_connection(r, w, allowed_uid=allowed_uid, db_path=db_path, reservations=reservations, offline=offline, media=media),
         path=str(socket_path), limit=MAX_MESSAGE + 2,
     )
     try:
