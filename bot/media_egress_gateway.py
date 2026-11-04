@@ -1,0 +1,133 @@
+"""Constrained outbound CONNECT gateway for a future network-isolated worker.
+
+Listens ONLY on an explicitly supplied Unix socket; never exposes TCP.
+All destinations are resolved by the gateway and connected to a pinned public
+IP, preventing DNS rebinding between validation and connection.
+"""
+import asyncio
+import ipaddress
+import socket
+
+
+class EgressDenied(ValueError):
+    pass
+
+
+_SUFFIXES = ("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "youtube-nocookie.com")
+_MAX_HEADER = 4096
+
+
+def permitted_host(host: str) -> bool:
+    if not isinstance(host, str) or not 1 <= len(host) <= 253:
+        return False
+    if host != host.lower() or host.endswith(".") or not host.isascii():
+        return False
+    if any(not label or len(label) > 63 or not all(c.isascii() and (c.islower() or c.isdigit() or c == "-") for c in label)
+           or label[0] == "-" or label[-1] == "-" for label in host.split(".")):
+        return False
+    return any(host == suffix or host.endswith("." + suffix) for suffix in _SUFFIXES)
+
+
+def parse_connect(line: bytes) -> tuple[str, int]:
+    try:
+        text = line.decode("ascii")
+        method, authority, version = text.split(" ")
+        host, port = authority.rsplit(":", 1)
+    except (UnicodeError, ValueError) as exc:
+        raise EgressDenied("Malformed CONNECT") from exc
+    if method != "CONNECT" or version != "HTTP/1.1" or port != "443" or not permitted_host(host):
+        raise EgressDenied("Destination not permitted")
+    return host, 443
+
+
+def public_ip(address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+        return ip.is_global and not ip.is_multicast and not ip.is_unspecified
+    except ValueError:
+        return False
+
+
+async def resolve_public(host: str) -> list[tuple[int, str]]:
+    if not permitted_host(host):
+        raise EgressDenied("Destination not permitted")
+    loop = asyncio.get_running_loop()
+    addresses = await loop.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    result = [(family, sockaddr[0]) for family, _, _, _, sockaddr in addresses if public_ip(sockaddr[0])]
+    # Refuse mixed private/public DNS answers rather than silently ignoring
+    # potentially attacker-controlled internal destinations.
+    if len(result) != len(addresses) or not result:
+        raise EgressDenied("DNS returned unsafe addresses")
+    return result
+
+
+async def _relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    try:
+        while data := await reader.read(65536):
+            writer.write(data)
+            await writer.drain()
+    except (ConnectionError, OSError):
+        pass
+    finally:
+        writer.close()
+
+
+async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    upstream = None
+    try:
+        line = await asyncio.wait_for(reader.readline(), timeout=5)
+        if not line.endswith(b"\r\n") or len(line) > _MAX_HEADER:
+            raise EgressDenied("Bad request line")
+        host, _ = parse_connect(line[:-2])
+        header_bytes = len(line)
+        while True:
+            header = await asyncio.wait_for(reader.readline(), timeout=5)
+            header_bytes += len(header)
+            if header_bytes > _MAX_HEADER or not header.endswith(b"\r\n"):
+                raise EgressDenied("Bad headers")
+            if header == b"\r\n":
+                break
+            # Reject proxy authorization, custom headers and request smuggling.
+            if not header.lower().startswith(b"host:"):
+                raise EgressDenied("Unexpected header")
+        addresses = await resolve_public(host)
+        for family, ip in addresses:
+            try:
+                upstream = await asyncio.wait_for(
+                    asyncio.open_connection(host=ip, port=443, family=family), timeout=5,
+                )
+                break
+            except (OSError, asyncio.TimeoutError):
+                continue
+        if upstream is None:
+            raise EgressDenied("Upstream unavailable")
+        writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        await writer.drain()
+        upstream_reader, upstream_writer = upstream
+        a = asyncio.create_task(_relay(reader, upstream_writer))
+        b = asyncio.create_task(_relay(upstream_reader, writer))
+        done, pending = await asyncio.wait((a, b), return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+    except (EgressDenied, OSError, asyncio.TimeoutError, ConnectionError):
+        try:
+            writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+            await writer.drain()
+        except (OSError, ConnectionError):
+            pass
+    finally:
+        if upstream is not None:
+            upstream[1].close()
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (OSError, ConnectionError):
+            pass
+
+
+async def serve_egress(socket_path):
+    """Gateway transport is Unix-only; deployment must protect socket parent."""
+    server = await asyncio.start_unix_server(handle_connect, path=str(socket_path))
+    async with server:
+        await server.serve_forever()
