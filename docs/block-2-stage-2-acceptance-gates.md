@@ -81,8 +81,15 @@ allowlist, so this alone does **not** establish that DNS-resolved loopback IPs
 are blocked or that yt-dlp/its children cannot bypass the gateway. Offline
 cancellation/recovery tests do not establish live process-tree termination.
 
-**Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback
-denial on the actual media path; prove no direct-network/Unix-socket bypass
+**Additional operator-reported DNS-filter test (2026-11-04): PASS 3/3.**
+With `asyncio` event-loop `getaddrinfo` patched to return only a loopback
+answer for allowed host `www.youtube.com`, `resolve_public()` raised
+`EgressDenied` for `127.0.0.1`, `127.255.255.254` and `::1`.
+This confirms the gateway's DNS-answer filtering logic, **not** live
+network-namespace enforcement or bypass resistance.
+
+**Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback denial on the **live media path**
+(beyond the mocked resolver test); prove no direct-network/Unix-socket bypass
 from the namespace (including child processes); exercise live timeout,
 cancellation, kill -9, gateway outage, cleanup and cumulative resource limits.
 The full Telegram metadata → choice → download → delivery path remains
