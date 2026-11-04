@@ -118,6 +118,15 @@ A test parent launched a sleeping child in the same process group under
 child (child absent or zombie in `/proc`). This is OS process-group evidence,
 not proof of the actual media worker cancellation/cleanup path.
 
+**Additional operator-reported cancellation/recovery regression suite (2026-11-04): PASS 21/21 in 1.20s.**
+Executed `tests/test_task_cancellation.py`, `test_cancel_worker_lifecycle.py`,
+`test_offline_active_cancellation.py`, `test_worker_crash_recovery.py`,
+`test_worker_recovery_extended.py`, `test_ready_recovery.py`,
+`test_media_ipc_integration.py`, and `test_media_queue_dispatcher.py`.
+Some tests overlap the previously reported 58-test suite; counts are not
+additive. This is offline regression evidence, not a live media cancellation
+or cleanup test.
+
 **Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback denial on the **live media path**
 (beyond the mocked resolver test); prove no direct-network/Unix-socket bypass
 from the namespace (including child processes); exercise live timeout,
