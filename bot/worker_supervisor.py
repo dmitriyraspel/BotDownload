@@ -46,6 +46,11 @@ class OfflineWorkerSupervisor:
             await self.stop()
             raise
 
+    async def wait(self) -> int:
+        if self.process is None:
+            raise RuntimeError("Worker не запущен")
+        return await self.process.wait()
+
     async def stop(self) -> None:
         process = self.process
         self.process = None
