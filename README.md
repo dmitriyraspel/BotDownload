@@ -4,7 +4,7 @@ Telegram-бот для скачивания видео и MP3 с YouTube, Instag
 
 ## Требования
 
-Основные требования к продукту, безопасности и переносимости закреплены в [docs/PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md). Офисный тестовый сервер не является эталоном сетевой конфигурации для VPS.
+**Утверждённая политика безопасности v1 (приоритет над другими документами):** [docs/SECURITY_POLICY_V1.md](docs/SECURITY_POLICY_V1.md). Продуктовые и переносимые требования: [docs/PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md). При расхождениях по безопасности применять `SECURITY_POLICY_V1.md`; менять её только после отдельного согласования с владельцем. Офисный тестовый сервер не является эталоном сетевой конфигурации для VPS.
 
 Основная целевая платформа — Linux VPS. Поддерживаемые сочетания ОС и Python уточняются по результатам интеграционных проверок; разработка и тесты также выполняются на Debian 12. Нужны FFmpeg, ffprobe и yt-dlp. Для первого этапа необходима установка Python-зависимостей. Локальный Telegram Bot API Server устанавливается отдельно и в данном проекте не разворачивается.
 
@@ -56,10 +56,13 @@ On Windows, `config.yaml` can use `telegram.api_mode: cloud`. Keep the bot token
 
 `bot/downloader.py` prepares video/MP3 downloads with duration and size
 checks, subprocess argument lists (no shell), timeouts and temporary-file cleanup.
-The Telegram handler intentionally still provides metadata only. Before enabling
-downloads from arbitrary users, implement and test network isolation against
-SSRF (including redirects and extractor-internal requests), enforce quotas and
-upload limits, and test the complete flow on Windows and Debian.
+The Telegram handler intentionally still provides metadata only. The experimental `bot.media_integration_smoke` can exercise an isolated
+media download through Unix IPC into a separate test SQLite database. It is
+**not** enabled for Telegram users. Before production enablement, validate
+the approved v1 network policy (block only `127.0.0.0/8` and `::1/128`
+for yt-dlp and children, while supporting system DNS/Fake-IP), resource
+limits, cancellation, quotas, uploads, and end-to-end Telegram delivery.
+More restrictive private-network SSRF protection is deferred to v2.
 
 
 ### Диагностика отправок с неопределённым результатом
