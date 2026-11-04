@@ -97,7 +97,9 @@ Task claiming and retries remain the broker's responsibility. IPC status
 queries are read-only. The `cancel_reservation` operation can revoke a
 matching reservation and signal an active offline fixture, but it is not
 a production media cancellation protocol. The worker retains read-only
-database access; no media download is started.
+database access; this task-status and cancellation route itself starts no
+media download. The separate experimental `execute_media` operation may
+start one after the authorized lease check.
 
 
 ## Broker lease lifecycle (not wired to execution)
@@ -120,7 +122,7 @@ gateway, but this has not been accepted for production use. Do not grant
 the worker write access to the bot's database.
 
 
-## IPC reservation handshake (implemented, execution disabled)
+## IPC reservation handshake (implemented; media execution test-only)
 
 The trusted broker can call `bot.worker_dispatch.reserve_worker_job`
 with a numeric task ID and an opaque lease token. The worker checks the
