@@ -27,6 +27,7 @@ def test_denied_host(host):
 
 def test_connect_only_tls_and_allowlisted_host():
     assert parse_connect(b"CONNECT www.youtube.com:443 HTTP/1.1") == ("www.youtube.com", 443)
+    assert parse_connect(b"CONNECT www.youtube.com:443 HTTP/1.0") == ("www.youtube.com", 443)
     for request in (b"GET / HTTP/1.1", b"CONNECT youtube.com:80 HTTP/1.1",
                     b"CONNECT localhost:443 HTTP/1.1",
                     b"CONNECT youtube.com.evil.org:443 HTTP/1.1"):
