@@ -112,6 +112,12 @@ As `tgbot`, a Python subprocess started in a new session was timed out after
 termination with exit code `-SIGKILL`. This tests the OS-level mechanism,
 not cancellation or cleanup of an actual media worker/process tree.
 
+**Additional operator-reported parent/child process-group kill probe (2026-11-04): PASS.**
+A test parent launched a sleeping child in the same process group under
+`tgbot`; `SIGKILL` sent to the process group terminated the parent and the
+child (child absent or zombie in `/proc`). This is OS process-group evidence,
+not proof of the actual media worker cancellation/cleanup path.
+
 **Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback denial on the **live media path**
 (beyond the mocked resolver test); prove no direct-network/Unix-socket bypass
 from the namespace (including child processes); exercise live timeout,
