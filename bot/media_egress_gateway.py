@@ -81,6 +81,7 @@ async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             raise EgressDenied("Bad request line")
         host, _ = parse_connect(line[:-2])
         header_bytes = len(line)
+        host_seen = False
         while True:
             header = await asyncio.wait_for(reader.readline(), timeout=5)
             header_bytes += len(header)
@@ -89,8 +90,13 @@ async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             if header == b"\r\n":
                 break
             # Reject proxy authorization, custom headers and request smuggling.
-            if not header.lower().startswith(b"host:"):
+            if not header.lower().startswith(b"host:") or host_seen:
                 raise EgressDenied("Unexpected header")
+            host_seen = True
+            if header[5:].strip().decode("ascii", errors="replace") != host + ":443":
+                raise EgressDenied("Host header mismatch")
+        if not host_seen:
+            raise EgressDenied("Missing Host header")
         addresses = await resolve_public(host)
         for family, ip in addresses:
             try:
