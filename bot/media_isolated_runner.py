@@ -72,7 +72,7 @@ async def execute_isolated(
         if not done:
             raise TimeoutError("Время загрузки истекло")
         if waiter.result() != 0:
-            raise RuntimeError("Изолированная загрузка завершилась с ошибкой")
+            raise RuntimeError(f"Изолированная загрузка завершилась с кодом {waiter.result()}")
         files = list(workspace.iterdir())
         if len(files) != 1 or not files[0].is_file() or files[0].is_symlink():
             raise RuntimeError("Небезопасный результат загрузки")
