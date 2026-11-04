@@ -45,7 +45,7 @@ def test_public_ip_accepted():
     assert public_ip("8.8.8.8")
 
 
-def test_mixed_dns_is_denied():
+def test_mixed_dns_uses_only_public_addresses():
     async def scenario():
         loop = asyncio.get_running_loop()
         def fake(*args, **kwargs):
@@ -54,6 +54,15 @@ def test_mixed_dns_is_denied():
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
             ]
         with patch.object(loop, "getaddrinfo", return_value=fake()):
-            with pytest.raises(EgressDenied, match="unsafe"):
+            assert await resolve_public("youtube.com") == [(socket.AF_INET, "8.8.8.8")]
+    asyncio.run(scenario())
+
+
+def test_only_private_dns_is_denied():
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        records = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
+        with patch.object(loop, "getaddrinfo", return_value=records):
+            with pytest.raises(EgressDenied, match="no public addresses"):
                 await resolve_public("youtube.com")
     asyncio.run(scenario())
