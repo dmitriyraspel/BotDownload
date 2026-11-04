@@ -29,6 +29,17 @@ def test_run_bot_starts_and_stops_upload_queue(monkeypatch, tmp_path):
         await stop.wait()
         events.append("upload_stopped")
 
+    class FakeWorker:
+        def __init__(self, db_path):
+            pass
+
+        async def start(self):
+            events.append("worker_started")
+
+        async def stop(self):
+            events.append("worker_stopped")
+
+    monkeypatch.setattr(entrypoint, "OfflineWorkerSupervisor", FakeWorker)
     monkeypatch.setattr(entrypoint, "Bot", Bot)
     monkeypatch.setattr(entrypoint, "Dispatcher", Dispatcher)
     monkeypatch.setattr(entrypoint, "run_upload_queue", fake_upload_queue)
@@ -45,4 +56,4 @@ def test_run_bot_starts_and_stops_upload_queue(monkeypatch, tmp_path):
         "telegram_upload_third_attempt_delay_seconds": 10,
     })
     asyncio.run(entrypoint.run_bot(settings))
-    assert events == ["polling", "upload_started", "upload_stopped", "session_closed"]
+    assert events == ["worker_started", "polling", "upload_started", "upload_stopped", "worker_stopped", "session_closed"]
