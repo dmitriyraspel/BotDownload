@@ -52,8 +52,11 @@ async def execute_isolated(
         raise UnsafeMediaRequest("Некорректная рабочая директория")
     if cancel is not None and cancel.is_set():
         raise asyncio.CancelledError()
+    env = dict(os.environ)
+    project = str(Path(__file__).resolve().parent.parent)
+    env["PYTHONPATH"] = project
     proc = await asyncio.create_subprocess_exec(
-        *command, cwd=str(workspace), stdin=asyncio.subprocess.DEVNULL,
+        *command, env=env, cwd=str(workspace), stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
         start_new_session=True,
     )
