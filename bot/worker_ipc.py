@@ -125,9 +125,12 @@ async def handle_connection(
             elif request["op"] == "reserve":
                 accepted = reservations.accept(db_path, request["task_id"], request["token"])
             else:
-                accepted = (offline.cancel(request["task_id"], request["token"])
-                            if offline is not None else
-                            reservations.cancel(request["task_id"], request["token"]))
+                task_id, token = request["task_id"], request["token"]
+                # Notify active media execution before revoking the reservation.
+                # The runner kills its process group and worker cleans workspace.
+                media_stopped = media.cancel(task_id, token) if media is not None else False
+                offline_stopped = offline.cancel(task_id, token) if offline is not None else False
+                accepted = media_stopped or offline_stopped or reservations.cancel(task_id, token)
             response = {"version": 1, "status": "accepted" if accepted else "rejected",
                         "downloads_enabled": False}
         else:
