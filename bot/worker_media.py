@@ -6,6 +6,7 @@ lease, uses a private Unix CONNECT gateway, and returns a bounded file path.
 import asyncio
 from contextlib import closing
 import os
+import logging
 from pathlib import Path
 import sqlite3
 import stat
@@ -53,7 +54,8 @@ class MediaJobController:
         try:
             root = download_root(root_value)
             require_free_space(root, 256 * 1024 * 1024)
-        except (OSError, ValueError, Exception):
+        except Exception:
+            logging.exception("media worker preflight failed: task=%d", task_id)
             return rejected
         self._busy = True
         workspace = None
@@ -82,6 +84,7 @@ class MediaJobController:
             return {"version": 1, "status": "completed",
                     "downloads_enabled": True, "file": str(file)}
         except (OSError, ValueError, RuntimeError, TimeoutError):
+            logging.exception("media worker execution failed: task=%d", task_id)
             return rejected
         finally:
             if gateway is not None:
