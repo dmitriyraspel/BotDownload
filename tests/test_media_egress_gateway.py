@@ -35,17 +35,21 @@ def test_connect_only_tls_and_allowlisted_host():
             parse_connect(request)
 
 
-@pytest.mark.parametrize("ip", ["127.0.0.1", "10.0.0.1", "192.168.1.2",
-                                  "169.254.169.254", "::1", "fc00::1", "0.0.0.0"])
-def test_private_ip_denied(ip):
+@pytest.mark.parametrize("ip", ["127.0.0.1", "127.0.0.254", "127.255.255.255", "::1"])
+def test_v1_loopback_denied(ip):
     assert not public_ip(ip)
 
 
-def test_public_ip_accepted():
-    assert public_ip("8.8.8.8")
+@pytest.mark.parametrize("address", [
+    "8.8.8.8", "198.18.0.44", "198.18.0.6",
+    "10.0.0.1", "192.168.1.2", "169.254.169.254",
+    "fc00::1", "fe80::1", "0.0.0.0",
+])
+def test_v1_other_addresses_allowed(address):
+    assert public_ip(address)
 
 
-def test_mixed_dns_uses_only_public_addresses():
+def test_mixed_dns_discards_only_loopback():
     async def scenario():
         loop = asyncio.get_running_loop()
         def fake(*args, **kwargs):
@@ -58,11 +62,20 @@ def test_mixed_dns_uses_only_public_addresses():
     asyncio.run(scenario())
 
 
-def test_only_private_dns_is_denied():
+def test_only_loopback_dns_is_denied():
     async def scenario():
         loop = asyncio.get_running_loop()
         records = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
         with patch.object(loop, "getaddrinfo", return_value=records):
-            with pytest.raises(EgressDenied, match="no public addresses"):
+            with pytest.raises(EgressDenied, match="only loopback addresses"):
                 await resolve_public("youtube.com")
+    asyncio.run(scenario())
+
+
+def test_fake_ip_resolves_under_v1_policy():
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.44", 443))]
+        with patch.object(loop, "getaddrinfo", return_value=answers):
+            assert await resolve_public("www.youtube.com") == [(socket.AF_INET, "198.18.0.44")]
     asyncio.run(scenario())
