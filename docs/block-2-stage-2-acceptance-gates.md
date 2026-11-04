@@ -53,3 +53,37 @@ validated result; failures still mark tasks failed.
 
 The code must not claim successful real-network validation until the Debian
 host has actually run that test.
+
+## Debian 12 test evidence — 2026-11-04 (operator reported)
+
+The operator ran the following on the Debian 12 test host. These results are
+recorded as **operator-reported evidence**, not independently reproduced by
+GitHub CI or this repository review.
+
+- Live opt-in media smoke, as unprivileged `tgbot`, using
+  `https://www.youtube.com/watch?v=jNQXAC9IVRw`: **PASS**;
+  task status `upload_pending`; output `jNQXAC9IVRw.webm`, **474494 bytes**.
+  This confirms a positive media path on the host with its existing DNS/Fake-IP
+  configuration; it is not a full security acceptance test.
+- `python -m pytest -q tests/test_media_egress_gateway.py`:
+  **32 passed in 0.08s**.
+- Combined offline regression suite covering egress gateway/socket,
+  namespace bridge/runner, media IPC/queue, cancellation, crash recovery,
+  startup recovery and stage-4 integration: **58 passed in 1.20s**.
+- A separate Unix-socket CONNECT probe run as `tgbot` against
+  `bot.media_egress_gateway.handle_connect`: **3/3 denied** with HTTP 403
+  for `127.0.0.1`, `127.255.255.254`, and `[::1]`.
+  Gateway warnings `EgressDenied: Destination not permitted` are expected.
+
+**Evidence limits:** the CONNECT probe is a gateway request-validation test:
+these literal IP destinations are also rejected by the gateway's domain
+allowlist, so this alone does **not** establish that DNS-resolved loopback IPs
+are blocked or that yt-dlp/its children cannot bypass the gateway. Offline
+cancellation/recovery tests do not establish live process-tree termination.
+
+**Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback
+denial on the actual media path; prove no direct-network/Unix-socket bypass
+from the namespace (including child processes); exercise live timeout,
+cancellation, kill -9, gateway outage, cleanup and cumulative resource limits.
+The full Telegram metadata → choice → download → delivery path remains
+unverified and production media dispatch remains disabled.
