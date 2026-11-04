@@ -59,6 +59,7 @@ class MediaJobController:
         workspace = None
         gateway = None
         gateway_dir = None
+        completed = False
         try:
             workspace = create_task_directory(root, str(task_id))
             gateway_dir = tempfile.TemporaryDirectory(prefix="botdownload-egress-")
@@ -77,6 +78,7 @@ class MediaJobController:
             if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid()
                     or st.st_nlink != 1 or not 0 < st.st_size <= 256 * 1024 * 1024):
                 return rejected
+            completed = True
             return {"version": 1, "status": "completed",
                     "downloads_enabled": True, "file": str(file)}
         except (OSError, ValueError, RuntimeError, TimeoutError):
@@ -87,4 +89,10 @@ class MediaJobController:
                 await gateway.wait_closed()
             if gateway_dir is not None:
                 gateway_dir.cleanup()
+            if workspace is not None and not completed:
+                from .download_storage import cleanup_task_directory
+                try:
+                    cleanup_task_directory(root, workspace)
+                except OSError:
+                    pass
             self._busy = False
