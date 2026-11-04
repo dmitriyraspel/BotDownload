@@ -97,6 +97,15 @@ created namespace, **not** a complete no-bypass proof for the actual
 media child-process tree or host Unix sockets. Fake-IP remains permitted
 through the v1 gateway.
 
+**Additional operator-reported child-process IPv4/IPv6 route test (2026-11-04): PASS 2/2.**
+An unprivileged `tgbot` network namespace launched a child Python process.
+Direct TCP to `1.1.1.1:443` failed with `Errno 101 Network is unreachable`;
+direct TCP to `[2606:4700:4700::1111]:443` failed with
+`Errno 99 Cannot assign requested address`. Both attempts were denied.
+This demonstrates no direct IPv4/IPv6 access for that test child, but does
+not prove actual yt-dlp/FFmpeg process-tree isolation or host Unix-socket
+confinement.
+
 **Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback denial on the **live media path**
 (beyond the mocked resolver test); prove no direct-network/Unix-socket bypass
 from the namespace (including child processes); exercise live timeout,
