@@ -88,6 +88,15 @@ answer for allowed host `www.youtube.com`, `resolve_public()` raised
 This confirms the gateway's DNS-answer filtering logic, **not** live
 network-namespace enforcement or bypass resistance.
 
+**Additional operator-reported namespace route test (2026-11-04): PASS 2/2.**
+As `tgbot`, `unshare --user --map-root-user --net --fork` started a fresh
+network namespace. Direct TCP attempts to `1.1.1.1:443` and
+`198.18.0.44:443` both failed with `OSError: [Errno 101] Network is
+unreachable`. This demonstrates no direct IPv4 route in that freshly
+created namespace, **not** a complete no-bypass proof for the actual
+media child-process tree or host Unix sockets. Fake-IP remains permitted
+through the v1 gateway.
+
 **Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback denial on the **live media path**
 (beyond the mocked resolver test); prove no direct-network/Unix-socket bypass
 from the namespace (including child processes); exercise live timeout,
