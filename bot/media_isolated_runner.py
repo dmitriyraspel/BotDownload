@@ -5,6 +5,7 @@ the namespace contains loopback and no external network interface.
 """
 import asyncio
 import os
+import logging
 from pathlib import Path
 import shutil
 import signal
@@ -55,11 +56,14 @@ async def execute_isolated(
     env = dict(os.environ)
     project = str(Path(__file__).resolve().parent.parent)
     env["PYTHONPATH"] = project
-    proc = await asyncio.create_subprocess_exec(
-        *command, env=env, cwd=str(workspace), stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    diagnostic = workspace / ".namespace-stderr.log"
+    with diagnostic.open("wb") as log_file:
+        os.chmod(diagnostic, 0o600)
+        proc = await asyncio.create_subprocess_exec(
+            *command, env=env, cwd=str(workspace), stdin=asyncio.subprocess.DEVNULL,
+            stdout=log_file, stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
+        )
     waiter = asyncio.create_task(proc.wait())
     canceller = asyncio.create_task(cancel.wait()) if cancel else None
     try:
@@ -72,7 +76,12 @@ async def execute_isolated(
         if not done:
             raise TimeoutError("Время загрузки истекло")
         if waiter.result() != 0:
+            details = diagnostic.read_text(encoding="utf-8", errors="replace")[-3000:]
+            import re
+            details = re.sub(r"https?://\\S+", "[URL]", details)
+            logging.error("Namespace/yt-dlp diagnostic (task-local): %s", details)
             raise RuntimeError(f"Изолированная загрузка завершилась с кодом {waiter.result()}")
+        diagnostic.unlink(missing_ok=True)
         files = list(workspace.iterdir())
         if len(files) != 1 or not files[0].is_file() or files[0].is_symlink():
             raise RuntimeError("Небезопасный результат загрузки")
