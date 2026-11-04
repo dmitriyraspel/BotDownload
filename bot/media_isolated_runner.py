@@ -89,8 +89,13 @@ async def execute_isolated(
             raise RuntimeError("Размер файла вне допустимого диапазона")
         return files[0]
     finally:
-        if proc.returncode is None:
+        # Kill the dedicated process group even when the launcher has already
+        # exited: namespace grandchildren may otherwise outlive their parent.
+        # The group was created exclusively for this invocation.
+        try:
             os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         await proc.wait()
         waiter.cancel()
         if canceller is not None:
