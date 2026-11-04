@@ -128,7 +128,6 @@ def test_ipc_cancel_signals_active_media(tmp_path):
 
 def test_live_lease_revocation_stops_media_and_removes_partial_file(tmp_path):
     """Real SQLite lease; active worker observes cancellation without IPC."""
-    from unittest.mock import AsyncMock
     from bot.storage import database, create_task, change_status, cancel_task
     from bot.worker_leases import offer_job, transition_job
     from bot.worker_reservations import JobReservations
@@ -160,9 +159,11 @@ def test_live_lease_revocation_stops_media_and_removes_partial_file(tmp_path):
             await asyncio.wait_for(cancel.wait(), timeout=5)
             raise asyncio.CancelledError()
 
-        with patch.dict(os.environ, {"BOTDOWNLOAD_MEDIA_ROOT": str(media_root)}), \
-             patch("bot.worker_media.execute_isolated", simulated_isolated), \\
-             patch("bot.download_storage.require_free_space"):
+        with (
+            patch.dict(os.environ, {"BOTDOWNLOAD_MEDIA_ROOT": str(media_root)}),
+            patch("bot.worker_media.execute_isolated", simulated_isolated),
+            patch("bot.download_storage.require_free_space"),
+        ):
             running = asyncio.create_task(controller.execute(db_path, task_id, token))
             await asyncio.wait_for(started.wait(), timeout=5)
             with database(db_path) as db:
