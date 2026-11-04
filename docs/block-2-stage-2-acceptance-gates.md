@@ -133,3 +133,7 @@ from the namespace (including child processes); exercise live timeout,
 cancellation, kill -9, gateway outage, cleanup and cumulative resource limits.
 The full Telegram metadata → choice → download → delivery path remains
 unverified and production media dispatch remains disabled.
+
+### Active media cancellation implementation block — completed (operator verification 2026-11-04)
+
+**Status: IMPLEMENTED / REGRESSION PASS (16/16).** On `feature/stage-2-telegram`, the worker IPC `cancel_reservation` operation signals an active media job; `MediaJobController` matches task ID and token and passes an `asyncio.Event` to the isolated runner, whose process-group termination is covered by a real parent/child subprocess test. Three new tests in `tests/test_media_active_cancellation.py` cover ownership, subprocess-group termination, and Unix IPC cancellation delivery. An initial test failed because the test request used a literal `\\n` rather than a newline; this test defect was corrected in commit `a89c5c3f5664bacaa7ba0ddcf652a043ded2721f`. Operator reports the subsequent six-module suite passed **16/16** on Debian 12 (2026-11-04). This closes the **implementation-and-regression block**, not the overall Stage 2 security acceptance. Outstanding: live cancellation during real yt-dlp/FFmpeg work, cleanup/no stale publication, worker crash/restart, gateway outage and resource-limit acceptance. Production media dispatch stays disabled.
