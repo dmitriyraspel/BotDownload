@@ -6,6 +6,7 @@ IP, preventing DNS rebinding between validation and connection.
 """
 import asyncio
 import ipaddress
+import logging
 import socket
 
 
@@ -121,7 +122,8 @@ async def handle_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWri
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
-    except (EgressDenied, OSError, asyncio.TimeoutError, ConnectionError):
+    except (EgressDenied, OSError, asyncio.TimeoutError, ConnectionError) as exc:
+        logging.warning("Media egress CONNECT denied: %s: %s", type(exc).__name__, exc)
         try:
             if established:
                 return
