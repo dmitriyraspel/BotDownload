@@ -12,11 +12,12 @@ from .storage import database, claim_next_task, change_status, task_is_cancelled
 from .worker_dispatch import reserve_worker_job, cancel_worker_reservation
 from .worker_ipc import WorkerProtocolError
 from .worker_leases import offer_job, transition_job, cancel_job
+from .media_ipc_client import request_media_execution, publish_media_file
 
 
 async def process_one_media_task(
     *, db_path: Path, socket_path: Path, max_wait_minutes: int = 30,
-    lease_seconds: int = 60,
+    lease_seconds: int = 180, configured_download_dir: str | None = None,
 ) -> int | None:
     """Claim exactly one task and exercise the authenticated IPC reservation.
 
@@ -39,9 +40,11 @@ async def process_one_media_task(
         with database(db_path) as db:
             if not transition_job(db, task_id, token, "offered", "running"):
                 raise WorkerProtocolError("Lease отозван до запуска")
-        # Fail closed: execution is intentionally unavailable until kernel-level
-        # egress isolation, secondary URL and redirect validation are present.
-        raise WorkerProtocolError("Медиа-исполнение не разрешено без сетевой изоляции")
+        if configured_download_dir is None:
+            raise WorkerProtocolError("Хранилище не настроено")
+        result = await request_media_execution(socket_path, task_id, token)
+        publish_media_file(db_path=db_path, task_id=task_id, result=result,
+                           configured_download_dir=configured_download_dir)
     except asyncio.CancelledError:
         with database(db_path) as db:
             cancel_job(db, task_id)
@@ -63,6 +66,7 @@ async def process_one_media_task(
 async def run_media_dispatcher(
     *, stop: asyncio.Event, db_path: Path, socket_path: Path,
     max_wait_minutes: int = 30, idle_seconds: float = 0.2,
+    configured_download_dir: str | None = None,
 ) -> None:
     """Explicit opt-in test dispatcher; never wire to production polling."""
     if not isinstance(stop, asyncio.Event) or idle_seconds <= 0:
@@ -71,6 +75,7 @@ async def run_media_dispatcher(
         task_id = await process_one_media_task(
             db_path=db_path, socket_path=socket_path,
             max_wait_minutes=max_wait_minutes,
+            configured_download_dir=configured_download_dir,
         )
         if task_id is None:
             try:
