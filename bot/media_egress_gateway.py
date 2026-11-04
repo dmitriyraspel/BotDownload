@@ -59,6 +59,9 @@ async def resolve_public(host: str) -> list[tuple[int, str]]:
     # DNS answers rather than rejecting an otherwise usable public answer.
     # No subsequent connection is made by hostname, preventing DNS rebinding.
     if not result:
+        # Log only IPs and the validated hostname; no request paths or secrets.
+        logging.warning("Media egress DNS diagnostics: host=%s answers=%s",
+                        host, [(family, sockaddr[0]) for family, _, _, _, sockaddr in addresses][:12])
         raise EgressDenied("DNS returned no public addresses")
     return result
 
