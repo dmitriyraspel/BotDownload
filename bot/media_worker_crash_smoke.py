@@ -103,7 +103,14 @@ async def run(url: str, wait_seconds: float = 45) -> int:
             crashed = True
             # Revoke the durable lease before recovery or any new worker.
             with database(db_path) as db:
-                assert cancel_job(db, task_id)
+                cancel_job(db, task_id)
+                lease_state = db.execute(
+                    "SELECT state FROM worker_job_leases WHERE task_id=?",
+                    (task_id,),
+                ).fetchone()
+                if lease_state != ("cancelled",):
+                    print("FAIL: durable lease not revoked after worker crash:", lease_state)
+                    return 1
                 recover_interrupted_tasks(db)
             try:
                 await asyncio.wait_for(dispatch, timeout=5)
