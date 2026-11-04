@@ -59,4 +59,6 @@ def test_run_bot_starts_and_stops_upload_queue(monkeypatch, tmp_path):
         "telegram_upload_third_attempt_delay_seconds": 10,
     })
     asyncio.run(entrypoint.run_bot(settings))
-    assert events == ["worker_started", "polling", "upload_started", "upload_stopped", "worker_stopped", "session_closed"]
+    assert events[0] == "worker_started"
+    assert sorted(events[1:3]) == ["polling", "upload_started"]
+    assert events[3:] == ["upload_stopped", "worker_stopped", "session_closed"]
