@@ -1,9 +1,15 @@
 # Block 2 / Stage 2 — remaining acceptance gates
 
+**Normative v1 policy:** [SECURITY_POLICY_V1.md](SECURITY_POLICY_V1.md)
+(approved 2026-11-03) overrides earlier network/isolation scope. In v1
+block only IPv4 `127/8` and IPv6 `::1/128` for yt-dlp and children;
+other private and Fake-IP destinations are intentionally not blocked.
+
 This branch contains experimental namespace and egress modules. **They are not
 production enabled and Stage 2 is not complete.** In particular, do not
-connect `run_media_dispatcher` to the production SQLite queue: it intentionally
-marks jobs failed.
+connect `run_media_dispatcher` to the production SQLite queue until acceptance.
+The current experimental dispatcher attempts real execution and stages a
+validated result; failures still mark tasks failed.
 
 ## What can be tested offline
 
@@ -17,24 +23,31 @@ marks jobs failed.
    namespaces. An unprivileged network namespace does not hide the host
    filesystem or host Unix sockets. A worker must not reach arbitrary host
    services via their Unix sockets.
-2. Run gateway under a distinct account or other meaningful trust boundary,
-   with strict ownership and permissions. The current Unix gateway is an
-   experimental primitive, not a complete security perimeter.
+2. Use the approved **single unprivileged service UID** in v1. A distinct
+   worker/gateway Unix account is deferred to v2. Verify gateway Unix-socket
+   ownership, limited scope and that the worker cannot bypass the mandatory
+   v1 loopback restriction. One UID does not isolate bot secrets.
 3. Verify that all yt-dlp extractor, media, and redirect requests are proxied.
    Reject requests to unexpected domains; add a safe, explicit domain policy
-   for required YouTube dependencies, and test DNS rebinding.
+   for required YouTube dependencies. Verify actual IPv4 `127/8` and IPv6
+   `::1` rejection under DNS, redirects and yt-dlp internal requests, with
+   ordinary/Fake-IP system DNS still functional. Other internal addresses
+   are not blocked under v1.
 4. Apply cumulative bytes, process-tree, CPU, memory and disk quotas, including
    child processes, partial fragments and intermediate files. Current
    `--max-filesize` is not a cumulative quota.
-5. Add worker IPC execution with lease verification, active cancellation,
-   deadline renewal, and a bounded, validated result protocol. Keep the worker
-   read-only with respect to SQLite.
+5. Experimental worker IPC `execute_media` and lease verification exist.
+   Validate cancellation, deadline expiry/renewal, bounded results and
+   fail-closed behavior under worker interruption. Keep SQLite writes in the
+   trusted broker.
 6. Stage the resulting regular file atomically in a bot-owned private
    directory and publish via a compare-and-swap status transition. Ensure
    cancellation and crashes cannot publish stale files.
 7. Perform a real YouTube download on Debian 12 under `tgbot` through the
-   configured gateway; record the sanitized logs and verify no host-network
-   fallback. No remote server access is available from the GitHub connector.
+   configured gateway; record sanitized logs; verify blocked loopback and
+   no host-network fallback. The explicit smoke command is
+   `python -m bot.media_integration_smoke --url URL --download-dir PATH`.
+   A green offline test suite does not prove live network isolation.
 8. Test restart, kill -9, timeout, cancellation, disk full, malformed output,
    and gateway outage before production enablement.
 
