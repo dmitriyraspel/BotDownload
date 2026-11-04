@@ -36,6 +36,9 @@ def test_run_bot_starts_and_stops_upload_queue(monkeypatch, tmp_path):
         async def start(self):
             events.append("worker_started")
 
+        async def wait(self):
+            await asyncio.Event().wait()
+
         async def stop(self):
             events.append("worker_stopped")
 
