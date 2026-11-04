@@ -1,8 +1,8 @@
 """Constrained outbound CONNECT gateway for a future network-isolated worker.
 
 Listens ONLY on an explicitly supplied Unix socket; never exposes TCP.
-All destinations are resolved by the gateway and connected to a pinned public
-IP, preventing DNS rebinding between validation and connection.
+All destinations are resolved by the gateway and connected to pinned IPs
+that pass the approved v1 loopback-only policy.
 """
 import asyncio
 import ipaddress
@@ -44,7 +44,7 @@ def parse_connect(line: bytes) -> tuple[str, int]:
 def public_ip(address: str) -> bool:
     try:
         ip = ipaddress.ip_address(address)
-        return ip.is_global and not ip.is_multicast and not ip.is_unspecified
+        return not (ip.version == 4 and ip in ipaddress.ip_network('127.0.0.0/8')) and ip != ipaddress.ip_address('::1')
     except ValueError:
         return False
 
@@ -55,14 +55,14 @@ async def resolve_public(host: str) -> list[tuple[int, str]]:
     loop = asyncio.get_running_loop()
     addresses = await loop.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     result = [(family, sockaddr[0]) for family, _, _, _, sockaddr in addresses if public_ip(sockaddr[0])]
-    # Only pinned globally routable addresses may be used. Discard unsafe
-    # DNS answers rather than rejecting an otherwise usable public answer.
-    # No subsequent connection is made by hostname, preventing DNS rebinding.
+    # Approved v1 policy: block IPv4 127/8 and IPv6 ::1 only.
+    # Other local and Fake-IP addresses are deferred to v2.
+    # Connect to the selected IP, never re-resolve by hostname.
     if not result:
         # Log only IPs and the validated hostname; no request paths or secrets.
         logging.warning("Media egress DNS diagnostics: host=%s answers=%s",
                         host, [(family, sockaddr[0]) for family, _, _, _, sockaddr in addresses][:12])
-        raise EgressDenied("DNS returned no public addresses")
+        raise EgressDenied("DNS returned only loopback addresses")
     return result
 
 
