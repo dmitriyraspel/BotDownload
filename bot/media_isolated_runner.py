@@ -75,6 +75,8 @@ async def execute_isolated(
             raise asyncio.CancelledError()
         if not done:
             raise TimeoutError("Время загрузки истекло")
+        if waiter.result() == 124:
+            raise TimeoutError("Время загрузки истекло (namespace yt-dlp)")
         if waiter.result() != 0:
             details = diagnostic.read_text(encoding="utf-8", errors="replace")[-3000:]
             import re
