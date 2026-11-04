@@ -46,7 +46,7 @@ async def run_bot(settings) -> None:
         trusted_users=tuple(settings.data["trusted_users"]),
     ))
     polling = asyncio.create_task(dispatcher.start_polling(bot))
-    worker_exit = asyncio.create_task(worker.process.wait())
+    worker_exit = asyncio.create_task(worker.wait())
     try:
         done, _ = await asyncio.wait(
             (polling, worker_exit), return_when=asyncio.FIRST_COMPLETED,
