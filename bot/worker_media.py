@@ -38,6 +38,16 @@ class MediaJobController:
     def __init__(self, reservations):
         self.reservations = reservations
         self._busy = False
+        self._active_job = None
+        self._cancel_event = None
+
+    def cancel(self, task_id: int, token: str) -> bool:
+        """Signal cancellation only for the currently executing owned job."""
+        if (self._active_job != (task_id, token)
+                or self._cancel_event is None):
+            return False
+        self._cancel_event.set()
+        return True
 
     async def execute(self, db_path: Path, task_id: int, token: str) -> dict:
         rejected = {"version": 1, "status": "rejected", "downloads_enabled": False}
@@ -58,6 +68,8 @@ class MediaJobController:
             logging.exception("media worker preflight failed: task=%d", task_id)
             return rejected
         self._busy = True
+        self._active_job = (task_id, token)
+        self._cancel_event = asyncio.Event()
         workspace = None
         gateway = None
         gateway_dir = None
@@ -72,6 +84,7 @@ class MediaJobController:
                 file = await execute_isolated(
                     task[0], gateway=gateway_path, workspace=workspace,
                     timeout_seconds=120, max_bytes=256 * 1024 * 1024,
+                    cancel=self._cancel_event,
                 )
             # Socket is not a downloadable file; unlink before returning.
             if not verify_running_lease(db_path, task_id, token):
@@ -83,6 +96,8 @@ class MediaJobController:
             completed = True
             return {"version": 1, "status": "completed",
                     "downloads_enabled": True, "file": str(file)}
+        except asyncio.CancelledError:
+            return rejected
         except (OSError, ValueError, RuntimeError, TimeoutError):
             logging.exception("media worker execution failed: task=%d", task_id)
             return rejected
@@ -98,4 +113,6 @@ class MediaJobController:
                     cleanup_task_directory(root, workspace)
                 except OSError:
                     pass
+            self._active_job = None
+            self._cancel_event = None
             self._busy = False
