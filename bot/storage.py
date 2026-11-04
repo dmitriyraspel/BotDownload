@@ -132,13 +132,26 @@ def change_status(connection: sqlite3.Connection, task_id: int,
 
 
 def cancel_user_tasks(connection: sqlite3.Connection, user_id: int) -> int:
-    """Only cancel nonterminal tasks owned by this Telegram user."""
-    cursor = connection.execute(
-        """UPDATE tasks SET status='cancelled' WHERE user_id=?
-        AND status IN ('queued','downloading','processing','upload_pending','uploading')""",
-        (user_id,),
-    )
-    return cursor.rowcount
+    """Cancel owned pending tasks and revoke their worker leases atomically.
+
+    Uploads already in flight remain untouched: Telegram delivery is ambiguous.
+    """
+    if type(user_id) is not int or user_id <= 0:
+        return 0
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
+    ids = [
+        row[0] for row in connection.execute(
+            """SELECT id FROM tasks WHERE user_id=?
+            AND status IN ('queued','downloading','processing','upload_pending')""",
+            (user_id,),
+        )
+    ]
+    from .worker_leases import cancel_job
+    count = 0
+    for task_id in ids:
+        count += int(cancel_task(connection, task_id=task_id, user_id=user_id))
+    return count
 
 
 def record_delivery(connection: sqlite3.Connection, task_id: int,
