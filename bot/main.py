@@ -18,6 +18,7 @@ from .ready_cleanup import cleanup_terminal_files
 from .upload_queue import run_upload_queue
 from .worker_supervisor import OfflineWorkerSupervisor
 from .queue_maintenance import run_queue_maintenance
+from .worker_crash_recovery import reconcile_confirmed_worker_exit
 
 
 async def run_bot(settings) -> None:
@@ -56,6 +57,8 @@ async def run_bot(settings) -> None:
             (polling, worker_exit), return_when=asyncio.FIRST_COMPLETED,
         )
         if worker_exit in done and polling not in done:
+            failed = reconcile_confirmed_worker_exit(Path("data/bot.sqlite"))
+            logging.error("Worker завершился: %d активных задач помечено failed", failed)
             raise RuntimeError("Offline worker неожиданно завершился")
         await polling
     finally:
