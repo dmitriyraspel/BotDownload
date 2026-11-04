@@ -16,6 +16,7 @@ from .telegram_handlers import router
 from .startup_recovery import recover_before_workers
 from .ready_cleanup import cleanup_terminal_files
 from .upload_queue import run_upload_queue
+from .worker_supervisor import OfflineWorkerSupervisor
 
 
 async def run_bot(settings) -> None:
@@ -27,6 +28,13 @@ async def run_bot(settings) -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     stop = asyncio.Event()
+    worker = OfflineWorkerSupervisor(Path("data/bot.sqlite"))
+    try:
+        await worker.start()
+    except BaseException:
+        await bot.session.close()
+        raise
+    logging.info("Offline worker запущен автоматически (загрузки отключены)")
     upload = asyncio.create_task(run_upload_queue(
         stop=stop, bot=bot, db_path=Path("data/bot.sqlite"),
         configured_download_dir=settings.data["storage"]["download_dir"],
@@ -50,7 +58,10 @@ async def run_bot(settings) -> None:
             except asyncio.CancelledError:
                 pass
         finally:
-            await bot.session.close()
+            try:
+                await worker.stop()
+            finally:
+                await bot.session.close()
 
 
 def main() -> None:
