@@ -6,6 +6,7 @@ is reached through an inherited filesystem Unix socket.
 """
 import asyncio
 import os
+import resource
 from pathlib import Path
 import socket
 import sys
@@ -64,9 +65,15 @@ async def run_download(gateway: Path, args: list[str], *, timeout: float) -> int
             env.pop(name, None)
         # yt-dlp's explicit --proxy applies to extractor and media requests.
         proxy = f"http://127.0.0.1:{port}"
+        def limits():
+            os.umask(0o077)
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+            resource.setrlimit(resource.RLIMIT_CPU, (int(timeout) + 2, int(timeout) + 2))
+            resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+            resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "yt_dlp", "--proxy", proxy, *args,
-            env=env, stdin=asyncio.subprocess.DEVNULL,
+            env=env, preexec_fn=limits, stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
