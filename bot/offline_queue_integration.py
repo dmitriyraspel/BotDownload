@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from .file_lifecycle import prepare_claimed_file_task
-from .storage import claim_next_task, database, change_status
+from .storage import claim_next_task, database, change_status, task_is_cancelled
 from .worker_dispatch import cancel_worker_reservation, reserve_worker_job
 from .worker_ipc import WorkerProtocolError
 from .worker_leases import cancel_job, offer_job, transition_job
@@ -41,7 +41,36 @@ async def process_one_offline_task(
             running = transition_job(db, task_id, token, "offered", "running")
         if not running:
             raise WorkerProtocolError("Задача отменена до запуска")
-        payload = await execute_offline_ipc(socket_path, task_id, token)
+        async def watch_cancellation():
+            while True:
+                with database(db_path) as db:
+                    if task_is_cancelled(db, task_id):
+                        return
+                await asyncio.sleep(0.05)
+
+        execution = asyncio.create_task(execute_offline_ipc(socket_path, task_id, token))
+        cancellation = asyncio.create_task(watch_cancellation())
+        try:
+            done, _ = await asyncio.wait(
+                (execution, cancellation), return_when=asyncio.FIRST_COMPLETED,
+            )
+            if cancellation in done:
+                execution.cancel()
+                try:
+                    await execution
+                except asyncio.CancelledError:
+                    pass
+                with database(db_path) as db:
+                    cancel_job(db, task_id)
+                await cancel_worker_reservation(socket_path, task_id, token)
+                return task_id
+            payload = await execution
+        finally:
+            cancellation.cancel()
+            try:
+                await cancellation
+            except asyncio.CancelledError:
+                pass
         with database(db_path) as db:
             finished = transition_job(db, task_id, token, "running", "finished")
         if not finished:
