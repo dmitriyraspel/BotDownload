@@ -292,20 +292,22 @@ def recover_interrupted_tasks(connection: sqlite3.Connection) -> int:
 
 
 def cancel_task(connection: sqlite3.Connection, *, task_id: int, user_id: int) -> bool:
-    """Cancel one task owned by the requester, never another user's task.
-
-    This changes durable state only. A future worker must also terminate the
-    corresponding process and clean up its workspace.
-    """
-    if task_id <= 0 or user_id <= 0:
+    """Atomically cancel owned work and revoke any active worker lease."""
+    if type(task_id) is not int or type(user_id) is not int or task_id <= 0 or user_id <= 0:
         return False
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
     cursor = connection.execute(
         """UPDATE tasks SET status='cancelled'
         WHERE id=? AND user_id=?
-        AND status IN ('queued','downloading','processing','upload_pending','uploading')""",
+        AND status IN ('queued','downloading','processing','upload_pending')""",
         (task_id, user_id),
     )
-    return cursor.rowcount == 1
+    if cursor.rowcount != 1:
+        return False
+    from .worker_leases import cancel_job
+    cancel_job(connection, task_id)
+    return True
 
 
 def task_is_cancelled(connection: sqlite3.Connection, task_id: int) -> bool:
