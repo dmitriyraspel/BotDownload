@@ -184,11 +184,12 @@ packet filtering. A systemd drop-in can override the unit; operators
 must inspect `systemctl cat botdownload-worker.service` and the
 effective properties before deployment.
 
-**Network-capable execution remains disabled.** A production-ready downloader needs independent validation of the approved
+**Production network-capable execution remains disabled.** The explicitly invoked
+media integration test can attempt network access; a production-ready downloader needs independent validation of the approved
 v1 egress policy: only IPv4 `127.0.0.0/8` and IPv6 `::1/128` are denied,
 while platform HTTPS, system DNS and Fake-IP continue to work. Other
-private/link-local/metadata restrictions are explicitly deferred to v2. No DNS/provider-specific bypass or
-unrestricted `IPAddressAllow` has been introduced. Until real
+private/link-local/metadata restrictions are explicitly deferred to v2. No custom DNS/provider route changes are required by the v1 policy;
+the old offline systemd unit remains separate from the test gateway. Until real
 isolation and integration tests pass on the target VPS, the worker
 must continue reporting `downloads_enabled=false`.
 
