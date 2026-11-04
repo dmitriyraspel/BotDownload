@@ -32,7 +32,9 @@ def test_main_passes_quota_to_upload_worker():
             with patch("bot.main.OfflineWorkerSupervisor") as supervisor:
                 supervisor.return_value.start = AsyncMock()
                 supervisor.return_value.stop = AsyncMock()
-                supervisor.return_value.wait = AsyncMock(side_effect=lambda: asyncio.Event().wait())
+                async def fake_worker_wait():
+                    await asyncio.Event().wait()
+                supervisor.return_value.wait = AsyncMock(side_effect=fake_worker_wait)
                 asyncio.run(run_bot(settings))
                 supervisor.return_value.start.assert_awaited_once()
                 supervisor.return_value.stop.assert_awaited_once()
