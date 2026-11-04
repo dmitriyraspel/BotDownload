@@ -83,7 +83,12 @@ async def run(url: str, wait_seconds: float = 45) -> int:
                             if p.is_file() and p.name != ".namespace-stderr.log"]
                 if partials and pids and not dispatch.done():
                     child_pids = pids
-                    child_groups = {os.getpgid(pid) for pid in pids if alive(pid)}
+                    for pid in pids:
+                        if alive(pid):
+                            try:
+                                child_groups.add(os.getpgid(pid))
+                            except ProcessLookupError:
+                                pass
                     break
                 if dispatch.done():
                     break
@@ -129,7 +134,7 @@ async def run(url: str, wait_seconds: float = 45) -> int:
                     (task_id,),
                 ).fetchone()
             print("After restart:", row, "lease:", lease)
-            if row[1:] != (None, None) or lease != ("cancelled",):
+            if row[1:] != (None, None) or lease != ("cancelled",) or row[0] == "upload_pending":
                 print("FAIL: publication or lease resurrection")
                 return 1
             print("PASS: no orphan processes, no publication after worker restart")
