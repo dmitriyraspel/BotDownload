@@ -1,8 +1,7 @@
 """Fail-closed queue-to-IPC orchestration for real-media jobs.
 
-Stage 2 reserves and starts durable leases but cannot execute downloads until
-network egress isolation is independently verified. No file is staged and no
-Telegram upload is enabled by this module.
+Experimental opt-in path. Never connect to production polling before
+security acceptance; successful tasks stage files but do not send Telegram.
 """
 import asyncio
 import logging
@@ -19,11 +18,7 @@ async def process_one_media_task(
     *, db_path: Path, socket_path: Path, max_wait_minutes: int = 30,
     lease_seconds: int = 180, configured_download_dir: str | None = None,
 ) -> int | None:
-    """Claim exactly one task and exercise the authenticated IPC reservation.
-
-    The worker currently has no network execution operation. A task is marked
-    failed rather than generating an offline fixture or pretending success.
-    """
+    """Claim a task and run the opt-in authenticated media IPC path."""
     with database(db_path) as db:
         task_id = claim_next_task(db, max_wait_minutes=max_wait_minutes)
         token = offer_job(db, task_id, ttl_seconds=lease_seconds) if task_id is not None else None
