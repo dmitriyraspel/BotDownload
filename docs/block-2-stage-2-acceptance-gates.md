@@ -106,6 +106,12 @@ This demonstrates no direct IPv4/IPv6 access for that test child, but does
 not prove actual yt-dlp/FFmpeg process-tree isolation or host Unix-socket
 confinement.
 
+**Additional operator-reported OS process-group timeout probe (2026-11-04): PASS.**
+As `tgbot`, a Python subprocess started in a new session was timed out after
+0.5 seconds, its process group was sent `SIGKILL`, and the parent awaited
+termination with exit code `-SIGKILL`. This tests the OS-level mechanism,
+not cancellation or cleanup of an actual media worker/process tree.
+
 **Still open before Stage 2 acceptance:** prove DNS-resolved IPv4/IPv6 loopback denial on the **live media path**
 (beyond the mocked resolver test); prove no direct-network/Unix-socket bypass
 from the namespace (including child processes); exercise live timeout,
