@@ -26,7 +26,7 @@ _ALLOWED = frozenset({
     "youtube.com", "www.youtube.com", "m.youtube.com",
     "youtu.be", "www.youtu.be",
 })
-_HOST = re.compile(r"[a-z0-9.-]+\\Z")
+_HOST = re.compile(r"[a-z0-9.-]+\Z")
 _MAX_URL = 2048
 
 
