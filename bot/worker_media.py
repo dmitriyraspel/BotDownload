@@ -34,6 +34,23 @@ def read_media_task(db_path: Path, task_id: int) -> tuple[str, str] | None:
         return None
 
 
+async def watch_media_lease(db_path: Path, task_id: int, token: str,
+                            cancel: asyncio.Event, *, interval: float = 0.2) -> None:
+    """Fail closed when a durable lease is revoked, even without IPC cancel.
+
+    The broker may cancel a task in a separate process; an in-flight IPC
+    execute request must not hide that cancellation from the media subprocess.
+    """
+    while not cancel.is_set():
+        if not verify_running_lease(db_path, task_id, token):
+            cancel.set()
+            return
+        try:
+            await asyncio.wait_for(cancel.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            pass
+
+
 class MediaJobController:
     def __init__(self, reservations):
         self.reservations = reservations
@@ -74,6 +91,9 @@ class MediaJobController:
         gateway = None
         gateway_dir = None
         completed = False
+        lease_watcher = asyncio.create_task(
+            watch_media_lease(db_path, task_id, token, self._cancel_event)
+        )
         try:
             workspace = create_task_directory(root, str(task_id))
             gateway_dir = tempfile.TemporaryDirectory(prefix="botdownload-egress-")
@@ -102,6 +122,11 @@ class MediaJobController:
             logging.exception("media worker execution failed: task=%d", task_id)
             return rejected
         finally:
+            lease_watcher.cancel()
+            try:
+                await lease_watcher
+            except asyncio.CancelledError:
+                pass
             if gateway is not None:
                 gateway.close()
                 await gateway.wait_closed()
