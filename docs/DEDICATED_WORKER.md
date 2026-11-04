@@ -1,11 +1,21 @@
-# Dedicated worker IPC: experimental, downloads disabled
+# Dedicated worker IPC: experimental, production downloads disabled
+
+**Document priority:** [SECURITY_POLICY_V1.md](SECURITY_POLICY_V1.md)
+(approved 2026-11-03) overrides this historical implementation log wherever
+requirements differ. In v1 all service processes use **one unprivileged UID**;
+network blocking for yt-dlp and children covers only `127.0.0.0/8` and
+`::1/128`, not RFC1918, link-local, metadata or Fake-IP ranges.
+
 
 The independent offline worker is implemented in `bot.worker_service`.
-It exposes versioned, strictly validated Unix-socket operations for ping,
-read-only task status, lease reservation/cancellation and a fixed offline
-test fixture (`execute_offline`). It does not accept arbitrary commands,
-URLs, shell arguments or media files and cannot download media.
-The Telegram bot does not start this service automatically.
+It exposes versioned Unix-socket operations for ping, read-only task
+status, lease reservation/cancellation, the fixed offline fixture
+(`execute_offline`) and an **experimental** lease-authorized media execution
+operation (`execute_media`). The media path runs only through the explicitly
+invoked test dispatcher; production Telegram downloads remain disabled.
+It does not accept arbitrary shell commands or downloader arguments.
+The Telegram bot starts its supervised worker but does not wire the media
+dispatcher into Telegram polling.
 
 ## V1: manual Debian 12 run (Python 3.11.9)
 
@@ -47,10 +57,11 @@ for manual V1 development.
 A separate, explicitly reviewed worker protocol must restrict requested
 operations to validated task IDs and immutable server-side task data.
 Never accept arbitrary argv, filesystem paths, or shell commands from the
-bot. Implement and test an enforced network boundary that permits public
-HTTPS and legitimate DNS while blocking internal and metadata networks,
-including redirects and DNS rebinding. The service's current all-network
-deny must not be relaxed until live negative and positive checks pass.
+bot. Implement and test the approved v1 network boundary, denying only IPv4
+`127.0.0.0/8` and IPv6 `::1/128` for yt-dlp and children, while preserving
+system DNS, Fake-IP routing and required HTTPS. Stronger internal/metadata
+network blocking is deferred to v2. Any old all-network-deny systemd unit
+is an offline prototype, not the approved media egress policy.
 The Telegram bot and its existing download queue remain disabled.
 
 
@@ -61,8 +72,9 @@ operations, malformed frames, and oversized requests. The socket runtime
 directory must be owned by the worker process and must not be
 world-writable or a symlink. The client uses a finite positive timeout
 and treats missing or malformed responses as failure. These are
-defense-in-depth checks; all accepted operations remain offline and
-`downloads_enabled=false`.
+defense-in-depth checks. Offline operations remain network-free;
+`execute_media` is an experimental test-only operation with a distinct
+success response, not an indication that public downloads are enabled.
 
 
 ## Task status IPC (read-only)
@@ -102,8 +114,9 @@ This is a **foundation**, not a production media dispatcher. Tokens are
 transmitted only for authenticated reservation/fixture operations; the
 system worker does not claim tasks or perform media downloads. The broker
 reconciles leases at bot startup, but lease expiry is not a substitute
-for killing a running process. The separate worker
-still denies all IP traffic and cannot download media. Do not grant
+for killing a running process. The old offline systemd example still denies all IP traffic. The separately
+invoked media integration path can attempt downloads through its confined
+gateway, but this has not been accepted for production use. Do not grant
 the worker write access to the bot's database.
 
 
@@ -118,10 +131,11 @@ are rejected. `cancel_worker_reservation` revokes the matching
 in-memory reservation. The broker can separately use
 `worker_leases.transition_job` and `cancel_job` to update durable state.
 
-**Important limitations:** Reservation is a non-executing handshake.
-The separate, opt-in offline fixture can launch a fixed local subprocess;
-no Telegram handler or production queue worker dispatches media jobs.
-The worker never downloads media.
+**Important limitations:** Reservation alone is a non-executing handshake.
+The separate, opt-in offline fixture launches a fixed local subprocess;
+`execute_media` can run an approved media job after a running-lease check
+only in the explicitly invoked experimental path. No Telegram handler or
+production queue worker dispatches media jobs.
 A successful reserve response does not mean media work started or
 completed. Cancellation clears an in-memory reservation only, not a
 running subprocess. The broker must persist the corresponding lease
@@ -154,7 +168,8 @@ requeueing; there is no background lease-recovery daemon.
 
 These modules are offline building blocks. They do not establish
 filesystem, cgroup or network confinement of arbitrary media processes,
-and they do not yet deliver files to Telegram. The live worker remains media-disabled and `downloads_enabled=false`.
+and they do not yet deliver files to Telegram. The default Telegram path remains media-disabled; experimental
+`execute_media` responses do not establish production readiness.
 
 
 ## Network isolation gate (offline mode only)
@@ -167,11 +182,10 @@ packet filtering. A systemd drop-in can override the unit; operators
 must inspect `systemctl cat botdownload-worker.service` and the
 effective properties before deployment.
 
-**Network-capable execution remains disabled.** A usable downloader
-needs a separate, independently tested egress design that allows
-legitimate public HTTPS and resolver traffic while denying loopback,
-RFC1918, link-local, metadata services, IPv6 nonpublic addresses,
-redirects and DNS rebinding. No DNS/provider-specific bypass or
+**Network-capable execution remains disabled.** A production-ready downloader needs independent validation of the approved
+v1 egress policy: only IPv4 `127.0.0.0/8` and IPv6 `::1/128` are denied,
+while platform HTTPS, system DNS and Fake-IP continue to work. Other
+private/link-local/metadata restrictions are explicitly deferred to v2. No DNS/provider-specific bypass or
 unrestricted `IPAddressAllow` has been introduced. Until real
 isolation and integration tests pass on the target VPS, the worker
 must continue reporting `downloads_enabled=false`.
@@ -193,9 +207,9 @@ helpers are deliberately not connected to the Telegram polling loop.
 
 **Deployment gate:** media execution and external networking remain
 disabled. Do not enable downloading based on static unit checks alone.
-The remaining work includes an authenticated start/cancel protocol,
-worker-owned private job directories, process and resource isolation,
-result transfer, and live public-HTTPS/SSRF tests on the target VPS.
+The experimental `execute_media` path already provides lease-based start
+and a file result, but full cancellation, containment, cumulative quotas,
+Telegram integration and live v1 loopback checks remain acceptance gates.
 
 
 ## Offline end-to-end integration (opt-in; NOT media)
