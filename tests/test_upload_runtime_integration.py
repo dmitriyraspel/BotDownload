@@ -29,7 +29,12 @@ def test_main_passes_quota_to_upload_worker():
         bot_class.return_value.session.close = AsyncMock()
         dispatcher_class.return_value.start_polling = fake_polling
         with patch("bot.main.run_upload_queue", side_effect=fake_queue):
-            asyncio.run(run_bot(settings))
+            with patch("bot.main.OfflineWorkerSupervisor") as supervisor:
+                supervisor.return_value.start = AsyncMock()
+                supervisor.return_value.stop = AsyncMock()
+                asyncio.run(run_bot(settings))
+                supervisor.return_value.start.assert_awaited_once()
+                supervisor.return_value.stop.assert_awaited_once()
     assert received["daily_limit"] == 7
     assert received["trusted_users"] == (101, 102)
 
