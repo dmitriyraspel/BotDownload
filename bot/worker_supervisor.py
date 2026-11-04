@@ -10,8 +10,9 @@ from .worker_ipc import ping
 
 
 class OfflineWorkerSupervisor:
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, media_root: str | None = None):
         self.db_path = db_path.resolve()
+        self.media_root = media_root
         self.process: asyncio.subprocess.Process | None = None
         self._runtime: tempfile.TemporaryDirectory | None = None
         self.socket_path: Path | None = None
@@ -30,6 +31,8 @@ class OfflineWorkerSupervisor:
             BOTDOWNLOAD_WORKER_DB=str(self.db_path),
             BOTDOWNLOAD_WORKER_SOCKET=str(self.socket_path),
         )
+        if self.media_root is not None:
+            env["BOTDOWNLOAD_MEDIA_ROOT"] = str(Path(self.media_root).resolve())
         try:
             self.process = await asyncio.create_subprocess_exec(
                 sys.executable, "-m", "bot.worker_service", env=env,
