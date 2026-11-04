@@ -55,10 +55,11 @@ async def resolve_public(host: str) -> list[tuple[int, str]]:
     loop = asyncio.get_running_loop()
     addresses = await loop.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     result = [(family, sockaddr[0]) for family, _, _, _, sockaddr in addresses if public_ip(sockaddr[0])]
-    # Refuse mixed private/public DNS answers rather than silently ignoring
-    # potentially attacker-controlled internal destinations.
-    if len(result) != len(addresses) or not result:
-        raise EgressDenied("DNS returned unsafe addresses")
+    # Only pinned globally routable addresses may be used. Discard unsafe
+    # DNS answers rather than rejecting an otherwise usable public answer.
+    # No subsequent connection is made by hostname, preventing DNS rebinding.
+    if not result:
+        raise EgressDenied("DNS returned no public addresses")
     return result
 
 
