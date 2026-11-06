@@ -3,7 +3,7 @@ name: Python tests
 on:
   push:
     branches:
-      - feature/stage-2-telegram
+      - restore/verified-691-tests
   pull_request:
 
 permissions:
@@ -24,5 +24,5 @@ jobs:
             requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
-      - name: Run offline test suite
+      - name: Run offline test suite (legacy implementation; not v1 acceptance)
         run: python -m pytest -q
