@@ -51,6 +51,3 @@ backups/
 .DS_Store
 Thumbs.db
 Desktop.ini
-
-# Completed media files (private application data)
-files/
